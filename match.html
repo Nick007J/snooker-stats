@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Match</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <p class="sub" id="crumb"></p>
+  <h1 id="title">Match</h1>
+  <p class="sub" id="sub"></p>
+  <div class="grid" id="tiles"></div>
+  <div id="frames"></div>
+</main>
+<script src="app.js"></script>
+<script>
+(async () => {
+  const t = await load(`data/t/${qs("t")}.json`);
+  const m = t.matches.find(x => String(x.id) === qs("m"));
+  if (!m) { document.getElementById("title").textContent = "Match not found"; return; }
+  const [a, b] = m.p;
+  document.title = `${a} v ${b}`;
+  document.getElementById("crumb").innerHTML = `<a href="tournament.html?t=${encodeURIComponent(qs("t"))}">${esc(t.name)}</a>`;
+  document.getElementById("title").innerHTML = `${playerLink(a)} ${m.f[0] ?? "?"}–${m.f[1] ?? "?"} ${playerLink(b)}`;
+  document.getElementById("sub").textContent = [m.date, m.round, m.bo && `best of ${m.bo}`, m.table && `table ${m.table}`,
+    m.wo && "walkover"].filter(Boolean).join(" · ");
+
+  const tiles = [];
+  const pair = (label, x, f = num) => (x[0] != null || x[1] != null) && tiles.push([label, `${f(x[0]) || "–"} / ${f(x[1]) || "–"}`]);
+  pair("Average shot time (s)", m.ast); pair("Pot rate %", m.pot); pair("Highest break", m.hb); pair("Centuries", m.c);
+  const timed = m.frames.filter(f => f.d);
+  if (timed.length) tiles.push(["Average frame", mmss(timed.reduce((s, f) => s + f.d, 0) / timed.length)]);
+  document.getElementById("tiles").innerHTML = tiles.map(([k, v]) =>
+    `<div class="panel tile"><div class="v" style="font-size:20px">${v}</div><div class="k">${k}</div></div>`).join("");
+
+  let won = [0, 0];
+  const popups = {};  // "frame.visit" -> popover html for a break's balls
+  document.getElementById("frames").innerHTML = m.frames.map((f, fi) => {
+    if (f.rr) return `<div class="frame panel muted">Frame ${f.n} re-racked${f.d ? " after " + mmss(f.d) : ""}</div>`;
+    if (f.w) won[f.w - 1]++;
+    const head = `<strong>Frame ${f.n}</strong> ${f.w ? esc(m.p[f.w - 1]) : ""} <span class="muted">(${won[0]}–${won[1]})</span>` +
+      (f.sn ? ` <span class="pill">needed ${f.sn} snooker${f.sn > 1 ? "s" : ""}</span>` : "");
+    const meta = [f.aw && "awarded, not played", f.d && mmss(f.d), f.bad && "visits incomplete", f.note].filter(Boolean).join(" · ");
+    let body = "";
+    if (f.v.length) {
+      const vs = f.sh.length ? visitShots(f) : [];
+      f.v.forEach(([pl, pts, foul], vi) => {
+        const sh = vs[vi];
+        if (!sh || foul) return;
+        const t = sh.reduce((a, s) => a + (s[5] || 0), 0);
+        popups[`${fi}.${vi}`] = `<div class="balls">${sh.map(ball).join("")}</div>` +
+          `<div class="muted small">${esc(m.p[pl - 1])}: ${pts} (${sh.length} pot${sh.length > 1 ? "s" : ""}${t ? ", " + mmss(t) : ""})</div>`;
+      });
+      const rows = [1, 2].map(p => `<div class="row"><span class="nm">${esc(m.p[p - 1])}</span>` +
+        f.v.map(([pl, pts, foul], vi) => pl === p
+          ? `<span class="c ${foul ? "f" : "p" + p} ${pts >= 50 && !foul ? "big" : ""}" ${popups[`${fi}.${vi}`] ? `data-pop="${fi}.${vi}" tabindex="0"` : ""} title="${foul ? "foul points received" : popups[`${fi}.${vi}`] ? "" : "break"}">${foul ? "F" : ""}${pts}</span>`
+          : `<span class="c"></span>`).join("") +
+        `<span class="tot">${f.s[p - 1] ?? "?"}</span></div>`).join("");
+      body = `<div class="visits">${rows}</div>`;
+    } else {
+      const b50 = f.b50.map((x, i) => x ? `${esc(m.p[i])} ${x}` : "").filter(Boolean).join(", ");
+      body = `<div>${f.s[0] ?? "?"}–${f.s[1] ?? "?"}${b50 ? ` <span class="muted">· 50+: ${b50}</span>` : ""}</div>`;
+    }
+    if (f.sh.length) {
+      const n = k => f.sh.filter(s => s[1] === k).length;
+      const pl = (k, x) => `${x} ${k}${x === 1 ? "" : "s"}`;
+      if (isLive(f)) {
+        const times = f.sh.filter(s => s[1] !== "frame_start" && s[5]);
+        const avg = p => { const x = times.filter(s => s[0] === p); return x.length ? (x.reduce((a, s) => a + s[5], 0) / x.length).toFixed(1) : "–"; };
+        body += `<div class="muted small">${pl("shot", n("shot") + n("pot") + n("foul"))}: ${pl("pot", n("pot"))}, ` +
+          `${n("shot")} without a pot, ${pl("foul", n("foul"))} · avg shot time ${avg(1)}s / ${avg(2)}s · ` +
+          `<a href="shots.html?t=${encodeURIComponent(qs("t"))}&m=${m.id}&f=${fi}">shot by shot</a></div>`;
+      } else {
+        body += `<div class="muted small">${pl("pot", n("pot"))}, ${pl("foul", n("foul"))} (ball by ball: misses and safeties aren't recorded)</div>`;
+      }
+    }
+    return `<div class="frame panel"><div class="hd"><div>${head}</div><div class="muted small">${meta}</div></div>${body}</div>`;
+  }).join("");
+
+  // A break's balls: on hover, or tap / keyboard focus on a phone.
+  const pop = document.createElement("div");
+  pop.className = "pop panel";
+  pop.hidden = true;
+  document.body.append(pop);
+  const show = el => {
+    pop.innerHTML = popups[el.dataset.pop];
+    pop.hidden = false;
+    const r = el.getBoundingClientRect(), w = pop.offsetWidth;
+    pop.style.left = Math.max(8, Math.min(r.left + scrollX, scrollX + innerWidth - w - 8)) + "px";
+    pop.style.top = r.bottom + scrollY + 6 + "px";
+  };
+  const frames = document.getElementById("frames");
+  frames.addEventListener("mouseover", e => { const el = e.target.closest("[data-pop]"); if (el) show(el); });
+  frames.addEventListener("mouseout", e => { if (e.target.closest("[data-pop]")) pop.hidden = true; });
+  frames.addEventListener("focusin", e => { const el = e.target.closest("[data-pop]"); if (el) show(el); });
+  frames.addEventListener("focusout", () => { pop.hidden = true; });
+})();
+</script>
+</body>
+</html>

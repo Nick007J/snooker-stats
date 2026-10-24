@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Snooker Tournaments</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <h1>Tournaments</h1>
+  <div class="controls">
+    <label>Search <input id="q" placeholder="name" style="width:200px"></label>
+    <label>Source <select id="src"><option value="">All</option></select></label>
+  </div>
+  <div id="out"></div>
+</main>
+<script src="app.js"></script>
+<script>
+(async () => {
+  const ts = await load("data/tournaments.json");
+  const srcs = [...new Set(ts.map(t => t.src))].sort();
+  document.getElementById("src").innerHTML += srcs.map(s => `<option>${s}</option>`).join("");
+  const render = () => {
+    const q = document.getElementById("q").value.toLowerCase(), src = document.getElementById("src").value;
+    const rows = ts.filter(t => (!q || t.name.toLowerCase().includes(q)) && (!src || t.src === src));
+    table(document.getElementById("out"), [
+      {k: "start", label: "Start", l: true},
+      {k: "name", label: "Tournament", l: true, html: t => `<a href="tournament.html?t=${encodeURIComponent(t.file)}">${esc(t.name)}</a>` +
+        (t.variant ? ' <span class="pill">variant</span>' : "")},
+      {k: "season", label: "Season", fmt: season},
+      {k: "matches", label: "Matches"}, {k: "frames", label: "Frames"},
+      {k: "avg_break", label: "Avg break"}, {k: "b100", label: "100+"}, {k: "high_break", label: "Highest"},
+      {k: "avg_frame_time", label: "Avg frame", fmt: mmss},
+    ], rows, {sort: "start", limit: 2000});
+  };
+  document.getElementById("q").oninput = render;
+  document.getElementById("src").onchange = render;
+  render();
+})();
+</script>
+</body>
+</html>

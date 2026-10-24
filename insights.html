@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Snooker Insights</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <h1>Insights</h1>
+  <h2>How often does the winner of frame N win the match?</h2>
+  <p class="sub">All non-variant matches, grouped by match length. Only cells with at least 50 matches are shown.</p>
+  <div class="controls"><label>Best of <select id="bo"></select></label></div>
+  <div id="out"></div>
+</main>
+<script src="app.js"></script>
+<script>
+(async () => {
+  const ins = await load("data/insights.json");
+  const bos = [...new Set(ins.frame_n.map(r => r.bo))].filter(b => b > 1).sort((a, b) => a - b);
+  const sel = document.getElementById("bo");
+  sel.innerHTML = bos.map(b => `<option ${b === 7 ? "selected" : ""}>${b}</option>`).join("");
+  const render = () => table(document.getElementById("out"), [
+    {k: "frame", label: "Frame", l: true}, {k: "pct", label: "Frame winner wins match %"},
+    {k: "won", label: "Times"}, {k: "n", label: "Sample"},
+  ], ins.frame_n.filter(r => r.bo === +sel.value), {sort: "frame", asc: true});
+  sel.onchange = render;
+  render();
+})();
+</script>
+</body>
+</html>

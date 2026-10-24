@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Snooker Stats</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <h1>Snooker stats archive</h1>
+  <p class="sub">Visit-by-visit scoring from professional and amateur events, recorded from live scoring feeds.</p>
+  <div class="grid" id="tiles"></div>
+
+  <h2>What data exists</h2>
+  <p class="sub small">Frames with visit data have every scoring visit and foul. Frames with shot data (new WST feed) also have every shot and its timing. Frames with neither have the frame score only.</p>
+  <div id="coverage"></div>
+</main>
+<script src="app.js"></script>
+<script>
+(async () => {
+  const t = await load("data/totals.json");
+  const tiles = [["matches", "Matches"], ["frames", "Frames"], ["visits", "Scoring visits"], ["shots", "Shots"],
+                 ["players", "Players"], ["tournaments", "Tournaments"]];
+  document.getElementById("tiles").innerHTML = tiles.map(([k, l]) =>
+    `<div class="panel tile"><div class="v">${num(t[k])}</div><div class="k">${l}</div></div>`).join("") +
+    `<div class="panel tile"><div class="v small" style="font-size:16px">${t.first} → ${t.last}</div><div class="k">Date range (dated matches)</div></div>`;
+
+  const ins = await load("data/insights.json");
+  const names = {wst_legacy: "WST live scores (2016–23)", lovesnooker: "love-snooker archive (undated)",
+                 wst: "wst.tv feed (2023–)", ebsa: "EBSA / IBSF / ACBS", wsf: "WSF", cbsa: "CBSA (China)",
+                 thailandsnooker: "Asian / Q School Asia"};
+  const rows = [];
+  for (const [src, seasons] of Object.entries(ins.coverage))
+    for (const [s, c] of Object.entries(seasons))
+      rows.push({src: names[src] || src, season: s, ...c,
+                 vis: c.frames ? Math.round(100 * c.visit_frames / c.frames) : null,
+                 sh: c.frames ? Math.round(100 * c.shot_frames / c.frames) : null});
+  table(document.getElementById("coverage"), [
+    {k: "src", label: "Source", l: true}, {k: "season", label: "Season", l: true},
+    {k: "matches", label: "Matches"}, {k: "frames", label: "Frames"},
+    {k: "vis", label: "Visit data %"}, {k: "sh", label: "Shot data %"},
+  ], rows, {sort: "season"});
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Shot by shot</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <p class="sub" id="crumb"></p>
+  <h1 id="title">Shot by shot</h1>
+  <p class="sub" id="sub"></p>
+  <div class="grid" id="tiles"></div>
+  <h2>Shots</h2>
+  <p class="muted small">Time is how long the shot took, from the previous shot. Grey dashed balls were inferred: the
+    live feed lost them at the end of the frame.</p>
+  <div id="shots"></div>
+</main>
+<script src="app.js"></script>
+<script>
+(async () => {
+  const t = await load(`data/t/${qs("t")}.json`);
+  const m = t.matches.find(x => String(x.id) === qs("m"));
+  const fi = Number(qs("f"));
+  const f = m && m.frames[fi];
+  if (!f) { document.getElementById("title").textContent = "Frame not found"; return; }
+  const [a, b] = m.p;
+  const link = i => `shots.html?t=${encodeURIComponent(qs("t"))}&m=${m.id}&f=${i}`;
+  const live = m.frames.map((x, i) => [x, i]).filter(([x]) => !x.rr && x.sh && isLive(x));
+  const at = live.findIndex(([, i]) => i === fi);
+  const nav = [at > 0 && `<a href="${link(live[at - 1][1])}">← frame ${live[at - 1][0].n}</a>`,
+               at >= 0 && at < live.length - 1 && `<a href="${link(live[at + 1][1])}">frame ${live[at + 1][0].n} →</a>`];
+  document.title = `${a} v ${b}, frame ${f.n}`;
+  document.getElementById("crumb").innerHTML = `<a href="tournament.html?t=${encodeURIComponent(qs("t"))}">${esc(t.name)}</a> · ` +
+    matchLink(qs("t"), m.id, `${esc(a)} ${m.f[0] ?? "?"}–${m.f[1] ?? "?"} ${esc(b)}`);
+  document.getElementById("title").innerHTML = `Frame ${f.n}: ${playerLink(a)} ${f.s[0] ?? "?"}–${f.s[1] ?? "?"} ${playerLink(b)}`;
+  document.getElementById("sub").innerHTML = [m.date, f.d && `frame time ${mmss(f.d)}`, f.note && esc(f.note),
+    ...nav].filter(Boolean).join(" · ");
+
+  // Walk the frame: running score and break after each shot.
+  const score = [0, 0];
+  let brk = 0, at_table = null;
+  const rows = [];
+  f.sh.forEach(s => {
+    const [pl, kind, colour, pts, clock, time, inferred] = s;
+    if (kind === "frame_start") { at_table = pl; return; }
+    if (pl !== at_table) { brk = 0; at_table = pl; }
+    let what;
+    if (kind === "pot") {
+      score[pl - 1] += pts || 0;
+      brk += pts || 0;
+      what = `${ball(s)} ${esc(colour || `${pts} (ball unknown)`)}`;
+    } else if (kind === "foul") {
+      score[2 - pl] += pts || 0;
+      brk = 0;
+      what = `<span style="color:var(--foul)">Foul, ${pts} to ${esc(m.p[2 - pl])}</span>`;
+    } else {
+      brk = 0;
+      what = `<span class="muted">No pot (miss or safety)</span>`;
+    }
+    if (kind !== "pot") at_table = 3 - pl;
+    rows.push({pl, name: m.p[pl - 1], what: what + (inferred ? ' <span class="muted small">inferred</span>' : ""),
+               clock, time, score: `${score[0]}–${score[1]}`, brk: kind === "pot" ? brk : null});
+  });
+
+  const tiles = [];
+  [1, 2].forEach(p => {
+    const mine = rows.filter(r => r.pl === p), timed = mine.filter(r => r.time);
+    const pots = f.sh.filter(s => s[0] === p && s[1] === "pot").length;
+    const avg = timed.length ? (timed.reduce((x, r) => x + r.time, 0) / timed.length).toFixed(1) + "s" : "–";
+    const long = timed.length ? Math.max(...timed.map(r => r.time)).toFixed(0) + "s" : "–";
+    tiles.push([`${m.p[p - 1]}`, `${mine.length} shots, ${pots} pots`, `avg ${avg} · longest ${long}`]);
+  });
+  document.getElementById("tiles").innerHTML = tiles.map(([k, v, x]) =>
+    `<div class="panel tile"><div class="k">${esc(k)}</div><div class="v" style="font-size:20px">${v}</div><div class="k">${x}</div></div>`).join("");
+
+  const longest = Math.max(1, ...rows.map(r => r.time || 0));
+  document.getElementById("shots").innerHTML = `<div class="scroll shots"><table><thead><tr>
+    <th>#</th><th>Clock</th><th class="l">Player</th><th class="l">Shot</th><th>Time</th><th class="l bar"></th><th>Score</th><th>Break</th>
+    </tr></thead><tbody>${rows.map((r, i) => `<tr><td>${i + 1}</td><td>${esc(r.clock || "")}</td>
+    <td class="l" style="color:var(--p${r.pl})">${esc(r.name)}</td><td class="l">${r.what}</td>
+    <td>${r.time != null ? r.time.toFixed(1) + "s" : ""}</td>
+    <td class="l bar">${r.time ? `<span style="width:${(100 * r.time / longest).toFixed(1)}%;background:var(--p${r.pl})"></span>` : ""}</td>
+    <td>${r.score}</td><td>${r.brk ?? ""}</td></tr>`).join("")}</tbody></table></div>`;
+})();
+</script>
+</body>
+</html>

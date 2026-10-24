@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Player Leaderboards</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <h1>Players</h1>
+  <p class="sub">Click a column to sort. Break stats only count frames with visit data. Shoot Out, 6 Reds, World Cup and similar events are excluded.</p>
+  <div class="controls">
+    <label>Scope <select id="scope"><option value="pro">Professional</option><option value="amateur">Amateur / Q School</option></select></label>
+    <label>Season <select id="season"></select></label>
+    <label>Min matches <input id="min" type="number" value="20" min="0" style="width:70px"></label>
+    <label>View <select id="view">
+      <option value="breaks">Breaks</option><option value="results">Results</option>
+      <option value="pressure">Pressure</option><option value="pace">Pace & fouls</option>
+    </select></label>
+    <label>Search <input id="q" placeholder="player" style="width:150px"></label>
+  </div>
+  <div id="out"></div>
+</main>
+<script src="app.js"></script>
+<script>
+const VIEWS = {
+  breaks: [["avg_break", "Avg break", "Average scoring visit"], ["breaks", "Breaks"], ["b50", "50+"], ["b100", "100+"],
+           ["high_break", "Highest"], ["pts_per_frame", "Pts/frame"]],
+  results: [["matches", "Matches"], ["won", "Won"], ["win_pct", "Match %"], ["frames", "Frames"], ["frame_pct", "Frame %"],
+            ["first_frame_pct", "1st frame %"], ["deciders", "Deciders"], ["decider_pct", "Decider %"]],
+  pressure: [["close", "Close frames", "Margin under 30"], ["close_pct", "Close won %"],
+             ["lead50", "Led by 50+"], ["lead50_lost_pct", "Lost from 50+ ahead %"],
+             ["behind50", "Trailed by 50+"], ["behind50_won_pct", "Won from 50+ behind %"], ["snooker_wins", "Won needing snookers"]],
+  pace: [["frame_time", "Avg frame time", "Average length of frames the player played"], ["ast", "Avg shot time"],
+         ["pot_rate", "Pot rate %", "Official, wst.tv feed only"], ["fouls_per_frame", "Foul pts given/frame"]],
+};
+const DEFAULT_SORT = {breaks: "avg_break", results: "frame_pct", pressure: "behind50_won_pct", pace: "frame_time"};
+let boards;
+const $ = id => document.getElementById(id);
+
+function fillSeasons() {
+  const scope = $("scope").value;
+  const seasons = Object.keys(boards).filter(k => k.startsWith(scope + "|")).map(k => k.split("|")[1])
+    .filter(s => s !== "all").sort().reverse();
+  const cur = $("season").value;
+  $("season").innerHTML = `<option value="all">All time</option>` +
+    seasons.map(s => `<option value="${s}">${season(+s)}</option>`).join("");
+  if ([...$("season").options].some(o => o.value === cur)) $("season").value = cur;
+}
+
+function render() {
+  const rows = (boards[`${$("scope").value}|${$("season").value}`] || [])
+    .filter(r => r.matches >= (+$("min").value || 0))
+    .filter(r => !$("q").value || r.player.toLowerCase().includes($("q").value.toLowerCase()));
+  const view = $("view").value;
+  const cols = [{k: "#", label: "#"}, {k: "player", label: "Player", l: true, html: r => playerLink(r.player)},
+    ...VIEWS[view].map(([k, label, title]) => ({k, label, title, fmt: k === "frame_time" ? mmss : undefined}))];
+  if (view !== "results") cols.splice(2, 0, {k: "matches", label: "Matches"});
+  table($("out"), cols, rows, {sort: DEFAULT_SORT[view], asc: view === "pace"});
+}
+
+(async () => {
+  boards = await load("data/leaderboards.json");
+  fillSeasons();
+  ["scope"].forEach(id => $(id).onchange = () => { fillSeasons(); render(); });
+  ["season", "view", "min"].forEach(id => $(id).onchange = render);
+  $("q").oninput = render;
+  render();
+})();
+</script>
+</body>
+</html>

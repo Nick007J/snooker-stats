@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Snooker Records</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <h1>Records</h1>
+  <p class="sub">From frames with visit data, except highest breaks, which also use the official 50+ breaks from the wst.tv feed.</p>
+  <div class="controls">
+    <label>Scope <select id="scope"><option value="pro">Professional</option><option value="amateur">Amateur / Q School</option></select></label>
+    <label>Rows <select id="n"><option>10</option><option selected>25</option><option>100</option></select></label>
+  </div>
+  <div class="records" id="out"></div>
+</main>
+<script src="app.js"></script>
+<script>
+const TIME_KEYS = new Set(["frame_time", "short_frame_time"]);
+async function render() {
+  const all = await load("data/records.json");
+  const recs = all[document.getElementById("scope").value] || {};
+  const n = +document.getElementById("n").value;
+  const out = document.getElementById("out");
+  out.innerHTML = "";
+  for (const [key, r] of Object.entries(recs)) {
+    const box = document.createElement("div");
+    box.className = "panel";
+    box.innerHTML = `<h3>${esc(r.title)}</h3><div></div>`;
+    out.appendChild(box);
+    const rows = r.rows.slice(0, n).map(x => ({...x, who: x.pl || `${x.p1} v ${x.p2}`}));
+    table(box.lastChild, [
+      {k: "#", label: "#"},
+      {k: "v", label: "", fmt: v => TIME_KEYS.has(key) ? mmss(v) : num(v)},
+      {k: "who", label: "", l: true, html: x => x.pl ? playerLink(x.pl) : esc(x.who)},
+      {k: "d", label: "", l: true, html: x => matchLink(x.t, x.m, `${esc(x.tn)}${x.f ? ", fr " + x.f : ""}`) +
+        (x.x ? ` <span class="muted">(${esc(x.x)})</span>` : "") + (x.d ? ` <span class="muted">${x.d}</span>` : "")},
+    ], rows, {limit: n});
+  }
+}
+document.getElementById("scope").onchange = render;
+document.getElementById("n").onchange = render;
+render();
+</script>
+</body>
+</html>

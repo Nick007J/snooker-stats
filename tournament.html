@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tournament</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <h1 id="title">Tournament</h1>
+  <p class="sub" id="sub"></p>
+  <div id="out"></div>
+</main>
+<script src="app.js"></script>
+<script>
+(async () => {
+  const file = qs("t");
+  const t = await load(`data/t/${file}.json`);
+  document.title = t.name;
+  document.getElementById("title").textContent = t.name;
+  document.getElementById("sub").textContent = `${t.matches.length} matches`;
+  const rows = t.matches.map(m => {
+    const best = Math.max(...m.frames.flatMap(f => f.v.filter(v => !v[2]).map(v => v[1])), ...m.frames.flatMap(f => f.b50.filter(Boolean)), 0);
+    return {id: m.id, date: m.date, round: m.round, p1: m.p[0], p2: m.p[1], score: `${m.f[0] ?? "?"}–${m.f[1] ?? "?"}`,
+            frames: m.frames.length, best: best || null,
+            detail: m.frames.some(f => f.sh.length) ? "shots" : m.frames.some(f => f.v.length) ? "visits" : "scores"};
+  });
+  table(document.getElementById("out"), [
+    {k: "date", label: "Date", l: true}, {k: "round", label: "Round", l: true},
+    {k: "p1", label: "Player 1", l: true, html: r => playerLink(r.p1)},
+    {k: "score", label: "Score", html: r => matchLink(t.id, r.id, esc(r.score))},
+    {k: "p2", label: "Player 2", l: true, html: r => playerLink(r.p2)},
+    {k: "best", label: "Top break"}, {k: "detail", label: "Data", l: true},
+  ], rows, {sort: "date", asc: true, limit: 3000});
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Player</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <h1 id="title">Player</h1>
+  <p class="sub" id="sub"></p>
+  <h2>By season</h2>
+  <div id="seasons"></div>
+  <h2>Matches</h2>
+  <div class="controls"><label>Opponent <input id="q" style="width:180px"></label></div>
+  <div id="matches"></div>
+</main>
+<script src="app.js"></script>
+<script>
+(async () => {
+  const p = await load(`data/p/${qs("p")}.json`);
+  document.title = p.name;
+  document.getElementById("title").textContent = p.name;
+  const boards = await load("data/leaderboards.json");
+  const rows = [];
+  for (const [key, list] of Object.entries(boards)) {
+    const r = list.find(x => x.player === p.name);
+    if (!r) continue;
+    const [scope, s] = key.split("|");
+    rows.push({...r, scope, season: s === "all" ? "all time" : season(+s), order: (scope === "pro" ? "0" : "1") + (s === "all" ? "9999" : s)});
+  }
+  const won = p.matches.filter(m => m[5] > m[6]).length;
+  document.getElementById("sub").textContent = `${p.matches.length} matches recorded, ${won} won`;
+  table(document.getElementById("seasons"), [
+    {k: "scope", label: "Scope", l: true}, {k: "season", label: "Season", l: true},
+    {k: "matches", label: "Matches"}, {k: "win_pct", label: "Match %"}, {k: "frame_pct", label: "Frame %"},
+    {k: "avg_break", label: "Avg break"}, {k: "b50", label: "50+"}, {k: "b100", label: "100+"}, {k: "high_break", label: "Highest"},
+    {k: "frame_time", label: "Avg frame", fmt: mmss}, {k: "ast", label: "AST"}, {k: "pot_rate", label: "Pot %"},
+    {k: "behind50_won_pct", label: "Won from 50+ behind %"},
+  ], rows, {sort: "order"});
+
+  const render = () => {
+    const q = document.getElementById("q").value.toLowerCase();
+    const ms = p.matches.filter(m => !q || m[4].toLowerCase().includes(q)).map(m => ({
+      date: m[0], tid: m[1], tn: m[2], round: m[3], opp: m[4], score: `${m[5] ?? "?"}–${m[6] ?? "?"}`, res: m[5] > m[6] ? "W" : m[5] < m[6] ? "L" : "", id: m[7]}));
+    table(document.getElementById("matches"), [
+      {k: "date", label: "Date", l: true},
+      {k: "tn", label: "Tournament", l: true, html: r => `<a href="tournament.html?t=${encodeURIComponent(slug(r.tid))}">${esc(r.tn)}</a>`},
+      {k: "round", label: "Round", l: true}, {k: "res", label: "", l: true},
+      {k: "score", label: "Score", html: r => matchLink(r.tid, r.id, esc(r.score))},
+      {k: "opp", label: "Opponent", l: true, html: r => playerLink(r.opp)},
+    ], ms, {limit: 2000});
+  };
+  document.getElementById("q").oninput = render;
+  render();
+})();
+</script>
+</body>
+</html>
