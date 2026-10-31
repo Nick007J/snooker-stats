@@ -1,0 +1,391 @@
+{
+ "checked": "2026-10-31 16:23 UTC",
+ "events": [
+  {
+   "name": "International Championship 2026",
+   "org": "WST",
+   "start": "2026-10-31",
+   "end": "2026-11-07",
+   "where": "Nanjing, China",
+   "link": "https://www.wst.tv/internationalchampionship",
+   "dates": "31 Oct - 7 Nov 2026",
+   "source": "WST",
+   "first_seen": "2026-10-26"
+  },
+  {
+   "name": "Sportsbet.io Champion of Champions 2026",
+   "org": "WST",
+   "start": "2026-11-09",
+   "end": "2026-11-15",
+   "where": "Leicester, England",
+   "link": "https://championofchampionssnooker.co.uk/",
+   "dates": "9-15 Nov 2026",
+   "source": "WST",
+   "first_seen": "2026-10-26"
+  },
+  {
+   "name": "2026/27 Q Tour - Event Four",
+   "org": "WPBSA",
+   "dates": "12-15 Nov 2026",
+   "start": "2026-11-12",
+   "end": "2026-11-15",
+   "where": "Vienna, Austria",
+   "link": "https://snookerscores.net/tournament-manager/202627-q-tour-event-four",
+   "source": "snookerscores",
+   "first_seen": "2026-10-26"
+  },
+  {
+   "name": "IBSF World Snooker Championships 2026 (Men & Women)",
+   "org": "IBSF",
+   "dates": "12 - 21 NOV 2026",
+   "start": "2026-11-12",
+   "end": "2026-11-21",
+   "where": "Indore, India",
+   "link": "https://www.ibsf.info/events/33/2026-ibsf-world-snooker-championships",
+   "source": "IBSF",
+   "first_seen": "2026-10-26"
+  },
+  {
+   "name": "MachineSeeker German Masters 2027 Qualifiers",
+   "org": "WST",
+   "start": "2026-11-16",
+   "end": "2026-11-19",
+   "where": "Wigan, England",
+   "link": "https://www.wst.tv",
+   "dates": "16-19 Nov 2026",
+   "source": "WST",
+   "first_seen": "2026-10-26"
+  },
+  {
+   "name": "UK Championship 2026 Qualifiers",
+   "org": "WST",
+   "start": "2026-11-21",
+   "end": "2026-11-26",
+   "where": "Leicester, England",
+   "link": "https://www.wst.tv",
+   "dates": "21-26 Nov 2026",
+   "source": "WST",
+   "first_seen": "2026-10-26"
+  },
+  {
+   "name": "Oman Team and Men World Snooker Cup 2026",
+   "org": "IBSF",
+   "dates": "23 - 29 NOV 2026",
+   "start": "2026-11-23",
+   "end": "2026-11-29",
+   "where": "Muscat, Oman",
+   "link": "https://www.ibsf.info/events/34/oman-team-&-men-world-snooker-cup-2026",
+   "source": "IBSF",
+   "first_seen": "2026-10-26"
+  },
+  {
+   "name": "UK Championship 2026",
+   "org": "WST",
+   "start": "2026-11-28",
+   "end": "2026-12-06",
+   "where": "York, England",
+   "link": "https://www.wst.tv/ukchampionship",
+   "dates": "28 Nov - 6 Dec 2026",
+   "source": "WST",
+   "first_seen": "2026-10-26"
+  },
+  {
+   "name": "2026/27 Q Tour - Event Five",
+   "org": "WPBSA",
+   "dates": "3-6 Dec 2026",
+   "start": "2026-12-03",
+   "end": "2026-12-06",
+   "where": "Walsall, England",
+   "link": "https://snookerscores.net/tournament-manager/202627-q-tour-event-five",
+   "source": "snookerscores",
+   "first_seen": "2026-10-26"
+  },
+  {
+   "name": "TAOM Shoot Out 2026",
+   "org": "WST",
+   "start": "2026-12-09",
+   "end": "2026-12-12",
+   "where": "Blackpool, England",
+   "link": "https://www.wst.tv/shootout",
+   "dates": "9-12 Dec 2026",
+   "source": "WST",
+   "first_seen": "2026-10-26"
+  },
+  {
+   "name": "IBSF World Junior, 6-Red and Masters Snooker Championships 2026",
+   "org": "IBSF",
+   "dates": "13 - 20 DEC 2026",
+   "start": "2026-12-13",
+   "end": "2026-12-20",
+   "where": "Bangkok, Thailand",
+   "link": "https://www.ibsf.info/events/35/2026-world-junior,-masters,-and-6-red-snooker-championships",
+   "source": "IBSF",
+   "first_seen": "2026-10-26"
+  },
+  {
+   "name": "BetVictor Scottish Open 2026",
+   "org": "WST",
+   "start": "2026-12-14",
+   "end": "2026-12-20",
+   "where": "Edinburgh, Scotland",
+   "link": "https://www.wst.tv/scottishopen",
+   "dates": "14-20 Dec 2026",
+   "source": "WST",
+   "first_seen": "2026-10-26"
+  },
+  {
+   "name": "BetVictor Championship League Snooker Invitational 2027",
+   "org": "WST",
+   "start": "2026-12-21",
+   "end": "2027-01-23",
+   "where": "Leicester, England",
+   "link": "https://www.wst.tv",
+   "parts": [
+    {
+     "name": "Group 1 (21-22 Dec 2026)",
+     "link": "https://www.wst.tv"
+    },
+    {
+     "name": "Group 2 (2-3 Jan 2027)",
+     "link": "https://www.wst.tv"
+    },
+    {
+     "name": "Group 3 (4-5 Jan 2027)",
+     "link": "https://www.wst.tv"
+    },
+    {
+     "name": "Group 4 (6-7 Jan 2027)",
+     "link": "https://www.wst.tv"
+    },
+    {
+     "name": "Group 5 (8-9 Jan 2027)",
+     "link": "https://www.wst.tv"
+    },
+    {
+     "name": "Group 6 (18-19 Jan 2027)",
+     "link": "https://www.wst.tv"
+    },
+    {
+     "name": "Group 7 (20-21 Jan 2027)",
+     "link": "https://www.wst.tv"
+    },
+    {
+     "name": "Winners Group (22-23 Jan 2027)",
+     "link": "https://www.wst.tv"
+    }
+   ],
+   "dates": "21 Dec 2026 - 23 Jan 2027",
+   "source": "WST",
+   "first_seen": "2026-10-26"
+  },
+  {
+   "name": "2026/27 Q Tour - Event Six",
+   "org": "WPBSA",
+   "dates": "7-10 Jan 2027",
+   "start": "2027-01-07",
+   "end": "2027-01-10",
+   "where": "Lochristi, Belgium",
+   "link": "https://snookerscores.net/tournament-manager/202627-q-tour-event-six",
+   "source": "snookerscores",
+   "first_seen": "2026-10-26"
+  },
+  {
+   "name": "Johnstone's Paint Masters 2027",
+   "org": "WST",
+   "start": "2027-01-10",
+   "end": "2027-01-17",
+   "where": "London, England",
+   "link": "https://www.wst.tv/themasters",
+   "dates": "10-17 Jan 2027",
+   "source": "WST",
+   "first_seen": "2026-10-26"
+  },
+  {
+   "name": "MachineSeeker German Masters 2027",
+   "org": "WST",
+   "start": "2027-01-25",
+   "end": "2027-01-31",
+   "where": "Berlin, Germany",
+   "link": "https://www.wst.tv/germanmasters",
+   "dates": "25-31 Jan 2027",
+   "source": "WST",
+   "first_seen": "2026-10-26"
+  },
+  {
+   "name": "BetVictor Welsh Open 2027 Qualifiers",
+   "org": "WST",
+   "start": "2027-02-02",
+   "end": "2027-02-03",
+   "where": "Sheffield, England",
+   "link": "https://www.wst.tv",
+   "dates": "2-3 Feb 2027",
+   "source": "WST",
+   "first_seen": "2026-10-26"
+  },
+  {
+   "name": "World Open 2027 Qualifiers",
+   "org": "WST",
+   "start": "2027-02-04",
+   "end": "2027-02-06",
+   "where": "Sheffield, England",
+   "link": "https://www.wst.tv",
+   "dates": "4-6 Feb 2027",
+   "source": "WST",
+   "first_seen": "2026-10-26"
+  },
+  {
+   "name": "BetVictor Welsh Open 2027",
+   "org": "WST",
+   "start": "2027-02-08",
+   "end": "2027-02-14",
+   "where": "Llandudno, Wales",
+   "link": "https://www.wst.tv/welshopen/",
+   "dates": "8-14 Feb 2027",
+   "source": "WST",
+   "first_seen": "2026-10-26"
+  },
+  {
+   "name": "2026/27 Q Tour - Event Seven",
+   "org": "WPBSA",
+   "dates": "11-14 Feb 2027",
+   "start": "2027-02-11",
+   "end": "2027-02-14",
+   "where": "Sheffield, England",
+   "link": "https://snookerscores.net/tournament-manager/202627-q-tour-event-seven",
+   "source": "snookerscores",
+   "first_seen": "2026-10-26"
+  },
+  {
+   "name": "World Grand Prix 2027",
+   "org": "WST",
+   "start": "2027-02-16",
+   "end": "2027-02-21",
+   "where": "Hong Kong, Hong Kong",
+   "link": "https://www.wst.tv/worldgrandprix",
+   "dates": "16-21 Feb 2027",
+   "source": "WST",
+   "first_seen": "2026-10-26"
+  },
+  {
+   "name": "Players Championship 2027",
+   "org": "WST",
+   "start": "2027-03-02",
+   "end": "2027-03-07",
+   "where": "Telford, England",
+   "link": "https://www.wst.tv/playerschampionship",
+   "dates": "2-7 Mar 2027",
+   "source": "WST",
+   "first_seen": "2026-10-26"
+  },
+  {
+   "name": "World Open 2027",
+   "org": "WST",
+   "start": "2027-03-15",
+   "end": "2027-03-21",
+   "where": "Yushan, Jiangxi Province, China",
+   "link": "https://www.wst.tv/worldopen",
+   "dates": "15-21 Mar 2027",
+   "source": "WST",
+   "first_seen": "2026-10-26"
+  },
+  {
+   "name": "Tour Championship 2027",
+   "org": "WST",
+   "start": "2027-03-29",
+   "end": "2027-04-04",
+   "where": "Manchester, England",
+   "link": "https://www.wst.tv/tourchampionship",
+   "dates": "29 Mar - 4 Apr 2027",
+   "source": "WST",
+   "first_seen": "2026-10-26"
+  },
+  {
+   "name": "World Championship 2027 Qualifiers",
+   "org": "WST",
+   "start": "2027-04-05",
+   "end": "2027-04-14",
+   "where": "Sheffield, England",
+   "link": "https://www.wst.tv",
+   "dates": "5-14 Apr 2027",
+   "source": "WST",
+   "first_seen": "2026-10-26"
+  },
+  {
+   "name": "World Championship 2027",
+   "org": "WST",
+   "start": "2027-04-17",
+   "end": "2027-05-03",
+   "where": "Sheffield, England",
+   "link": "https://www.wst.tv/worldchampionship",
+   "dates": "17 Apr - 3 May 2027",
+   "source": "WST",
+   "first_seen": "2026-10-26"
+  },
+  {
+   "name": "IBSF World Junior, 6-Red and Masters Snooker Championships 2027",
+   "org": "IBSF",
+   "dates": "JUL 2027",
+   "start": "2027-07",
+   "end": "2027-07",
+   "where": "Manama Bahrain",
+   "link": "https://www.ibsf.info/events",
+   "source": "IBSF",
+   "first_seen": "2026-10-26"
+  },
+  {
+   "name": "British Open 2027",
+   "org": "WST",
+   "start": "2027-08-30",
+   "end": "2027-09-05",
+   "where": "Cheltenham, England",
+   "link": "https://www.wst.tv",
+   "dates": "30 Aug - 5 Sep 2027",
+   "source": "WST",
+   "first_seen": "2026-10-26"
+  },
+  {
+   "name": "BetVictor Northern Ireland Open 2027",
+   "org": "WST",
+   "start": "2027-10-03",
+   "end": "2027-10-10",
+   "where": "Belfast, Northern Ireland",
+   "link": "https://www.wst.tv",
+   "dates": "3-10 Oct 2027",
+   "source": "WST",
+   "first_seen": "2026-10-26"
+  },
+  {
+   "name": "IBSF World Snooker Championships 2027 (Men & Women)",
+   "org": "IBSF",
+   "dates": "NOV 2027",
+   "start": "2027-11",
+   "end": "2027-11",
+   "where": "TBC",
+   "link": "https://www.ibsf.info/events",
+   "source": "IBSF",
+   "first_seen": "2026-10-26"
+  },
+  {
+   "name": "Oman Open and World Cup Team Championships",
+   "org": "IBSF",
+   "dates": "NOV 2027",
+   "start": "2027-11",
+   "end": "2027-11",
+   "where": "Muscat Oman",
+   "link": "https://www.ibsf.info/events",
+   "source": "IBSF",
+   "first_seen": "2026-10-26"
+  },
+  {
+   "name": "IBSF World Snooker Championships 2028 (Men & Women)",
+   "org": "IBSF",
+   "dates": "NOV 2028",
+   "start": "2028-11",
+   "end": "2028-11",
+   "where": "DOHA Qatar",
+   "link": "https://www.ibsf.info/events",
+   "source": "IBSF",
+   "first_seen": "2026-10-26"
+  }
+ ]
+}

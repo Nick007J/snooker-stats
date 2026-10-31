@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Snooker Insights</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <h1>Insights</h1>
+
+  <h2>Season trends (professional, excluding Q School)</h2>
+  <p class="sub">How the game changes from season to season in professional events.</p>
+  <div class="controls"><label>Metric <select id="tm"></select></label></div>
+  <div class="panel" id="chart"></div>
+  <div id="ttab" style="margin-top:12px"></div>
+
+  <h2>Win chances from the scoreboard</h2>
+  <p class="sub">How often the player leading by the given frame score went on to win the match; only scores seen in at least 20 matches.</p>
+  <div class="controls"><label>Best of <select id="bo2"></select></label></div>
+  <div id="hm"></div>
+
+  <h2>First to a big break</h2>
+  <p class="sub">How often the player who first made a break of at least the given size in a frame went on to win that frame.</p>
+  <div id="fb"></div>
+
+  <h2>Breaking off</h2>
+  <p class="sub">How often the player who broke off won the frame, in all frames and in deciding frames. Matches whose
+    break-off is on record: the old WST live scoring (2016–23), live captures, Sportradar timelines and snookerscores
+    sheets. Players' figures are in the Break-off view of the Players page.</p>
+  <div id="bk"></div>
+
+  <h2>Needing snookers</h2>
+  <p class="sub">How often a player who needed snookers (behind by more than the points left) and still scored again in
+    the frame, from a pot or a foul by the opponent, went on to win it, by the most snookers needed. Frames with every
+    ball potted on record only (live scoring, Sportradar timelines, snookerscores sheets), mostly from 2023 on.</p>
+  <div id="sn"></div>
+
+  <h2>The colour with the reds</h2>
+  <p class="sub">Which colour went down after a red, of every colour taken with a red and of the first one in a break.
+    Same frames as above. Players' shares are in the Potting view of the Players page.</p>
+  <div id="col"></div>
+
+  <h2>How often does the winner of frame N win the match?</h2>
+  <p class="sub">All non-variant matches, grouped by match length. Only cells with at least 50 matches are shown.</p>
+  <div class="controls"><label>Best of <select id="bo"></select></label></div>
+  <div id="out"></div>
+</main>
+<script src="app.js"></script>
+<script>
+(async () => {
+  const ins = await load("data/insights.json");
+  const $ = id => document.getElementById(id);
+  const bos = k => [...new Set((ins[k] || []).map(r => r.bo))].filter(b => b > 1).sort((a, b) => a - b);
+  const pickBo = (sel, list) => sel.innerHTML = list.map(b => `<option ${b === (list.includes(7) ? 7 : list[0]) ? "selected" : ""}>${b}</option>`).join("");
+
+  // frame winner -> match winner
+  const sel = $("bo");
+  pickBo(sel, bos("frame_n"));
+  const render = () => table($("out"), [
+    {k: "frame", label: "Frame", l: true}, {k: "pct", label: "Frame winner wins match %"},
+    {k: "won", label: "Times"}, {k: "n", label: "Sample"},
+  ], ins.frame_n.filter(r => r.bo === +sel.value), {sort: "frame", asc: true});
+  sel.onchange = render;
+  render();
+
+  // scoreboard heatmap
+  const sel2 = $("bo2"), ss = ins.score_state || [];
+  pickBo(sel2, bos("score_state"));
+  const heat = () => {
+    const bo = +sel2.value, rs = ss.filter(r => r.bo === bo), cell = {};
+    rs.forEach(r => cell[r.a + "-" + r.b] = r);
+    const win = Math.ceil(bo / 2);
+    let h = '<div class="hm-ax">Trailer\'s frames →</div><div class="scroll" style="padding:6px"><table class="hm"><thead><tr><th class="hm-ax">Leader ↓</th>';
+    for (let b = 0; b < win - 1; b++) h += `<th>${b}</th>`;
+    h += "</tr></thead><tbody>";
+    for (let a = 1; a < win; a++) {
+      h += `<tr><th>${a}</th>`;
+      for (let b = 0; b < win - 1; b++) {
+        const r = a > b && cell[a + "-" + b];
+        h += r ? `<td title="Leading ${a}–${b}: won ${r.won} of ${r.n}" style="background:color-mix(in srgb, var(--accent) ${Math.max(0, Math.min(100, (r.pct - 50) * 2))}%, var(--panel))">${r.pct}%</td>` : '<td class="e"></td>';
+      }
+      h += "</tr>";
+    }
+    $("hm").innerHTML = rs.length ? h + '</tbody></table></div><div class="hm-ax">Rows: leader\'s frames. Columns: trailer\'s frames.</div>' : '<p class="muted">No data.</p>';
+  };
+  sel2.onchange = heat;
+  heat();
+
+  // first big break
+  const fb = ins.first_break || [], ths = [...new Set(fb.map(r => r.th))].sort((a, b) => a - b);
+  const cellFb = (th, sc) => { const r = fb.find(r => r.th === th && r.scope === sc); return r ? `${r.pct}% <span class="muted small">(n=${num(r.n)})</span>` : ""; };
+  table($("fb"), [
+    {k: "th", label: "Event", l: true, fmt: v => v === 1 ? "First scorer" : `First break of ${v}+`},
+    {k: "pro", label: "Professional", html: r => cellFb(r.th, "pro")},
+    {k: "am", label: "Amateur", html: r => cellFb(r.th, "amateur")},
+  ], ths.map(th => ({th})), {sort: "th", asc: true});
+
+  // breaking off
+  const bk = ins.breaker || [];
+  const cellBk = (d, sc) => { const r = bk.find(r => r.decider === d && r.scope === sc); return r ? `${r.pct}% <span class="muted small">(n=${num(r.n)})</span>` : ""; };
+  table($("bk"), [
+    {k: "d", label: "Frames", l: true, fmt: v => v ? "Deciding frames" : "All frames"},
+    {k: "pro", label: "Professional", html: r => cellBk(r.d, "pro")},
+    {k: "am", label: "Amateur", html: r => cellBk(r.d, "amateur")},
+  ], [{d: false}, {d: true}], {sort: null});
+
+  // needing snookers
+  const nd = ins.needing || [];
+  const cellNd = (k, sc) => { const r = nd.find(r => r.snookers === k && r.scope === sc); return r ? `${r.pct}% <span class="muted small">(${num(r.won)} of ${num(r.n)})</span>` : ""; };
+  table($("sn"), [
+    {k: "k", label: "Needed", l: true, fmt: v => v === 3 ? "3+ snookers" : v === 1 ? "1 snooker" : `${v} snookers`},
+    {k: "pro", label: "Professional", html: r => cellNd(r.k, "pro")},
+    {k: "am", label: "Amateur", html: r => cellNd(r.k, "amateur")},
+  ], [...new Set(nd.map(r => r.snookers))].sort().map(k => ({k})), {sort: "k", asc: true});
+
+  // colour with the reds
+  const cl = ins.colours || [], BALLS = {2: "Yellow", 3: "Green", 4: "Brown", 5: "Blue", 6: "Pink", 7: "Black"};
+  const cellCl = (b, sc, first) => { const r = cl.find(r => r.ball === b && r.scope === sc && r.first === first); return r ? `${r.pct}%` : ""; };
+  const tot = (sc, first) => cl.filter(r => r.scope === sc && r.first === first).reduce((a, r) => a + r.n, 0);
+  table($("col"), [
+    {k: "b", label: "Colour", l: true, fmt: v => BALLS[v]},
+    {k: "pa", label: "Pro: all", title: `${num(tot("pro", false))} colours`, html: r => cellCl(r.b, "pro", false)},
+    {k: "pf", label: "Pro: first of break", title: `${num(tot("pro", true))} breaks`, html: r => cellCl(r.b, "pro", true)},
+    {k: "aa", label: "Amateur: all", title: `${num(tot("amateur", false))} colours`, html: r => cellCl(r.b, "amateur", false)},
+    {k: "af", label: "Amateur: first of break", title: `${num(tot("amateur", true))} breaks`, html: r => cellCl(r.b, "amateur", true)},
+  ], [7, 6, 5, 4, 3, 2].map(b => ({b})), {sort: "b", asc: false});
+
+  // trends
+  const tr = (ins.trends || []).slice().sort((a, b) => a.season - b.season);
+  const M = {
+    c_per_100: ["Centuries per 100 frames", v => v],
+    f_per_100: ["50+ breaks per 100 frames", v => v],
+    avg_break: ["Average break", v => v],
+    frame_time: ["Average frame time (mm:ss)", mmss],
+    pts_frame: ["Points per frame", v => v],
+    decider_pct: ["Matches going to a decider %", v => v + "%"],
+  };
+  const now = new Date(), current = now.getFullYear() + (now.getMonth() >= 5 ? 1 : 0);  // seasons start in June
+  const seasonSoFar = s => season(s) + (s >= current ? " (so far)" : "");
+  const tm = $("tm");
+  tm.innerHTML = Object.entries(M).map(([k, [l]]) => `<option value="${k}">${l}</option>`).join("");
+  const chart = () => {
+    const k = tm.value, fmt = M[k][1], W = 640, H = 280, L = 52, R = 14, T = 14, B = 34;
+    const pts = tr.map((r, i) => ({r, i, v: r[k]})).filter(p => p.v != null);
+    if (pts.length < 1) { $("chart").innerHTML = '<p class="muted">No data.</p>'; return; }
+    let lo = Math.min(...pts.map(p => p.v)), hi = Math.max(...pts.map(p => p.v));
+    if (hi === lo) { hi += 1; lo -= 1; }
+    const pad = (hi - lo) * 0.08;
+    lo = Math.max(0, lo - pad); hi += pad;
+    const step = (hi - lo) / 4;
+    const X = i => L + (tr.length < 2 ? (W - L - R) / 2 : i * (W - L - R) / (tr.length - 1)), Y = v => T + (hi - v) / (hi - lo) * (H - T - B);
+    let s = `<svg class="trend-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(M[k][0])} by season">`;
+    for (let g = 0; g <= 4; g++) {
+      const v = lo + step * g;
+      s += `<line class="gl" x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}"/><text x="${L - 6}" y="${Y(v) + 4}" text-anchor="end">${esc(fmt(k === "frame_time" ? Math.round(v) : Math.round(v * 10) / 10))}</text>`;
+    }
+    const every = Math.ceil(tr.length / 8);
+    tr.forEach((r, i) => { if ((tr.length - 1 - i) % every === 0) s += `<text x="${X(i)}" y="${H - 12}" text-anchor="${i === tr.length - 1 ? "end" : "middle"}">${season(r.season)}</text>`; });
+    s += `<polyline class="ln" points="${pts.map(p => X(p.i) + "," + Y(p.v)).join(" ")}"/>`;
+    pts.forEach(p => s += `<circle cx="${X(p.i)}" cy="${Y(p.v)}" r="4"><title>${seasonSoFar(p.r.season)}: ${esc(fmt(p.v))}</title></circle>`);
+    $("chart").innerHTML = s + "</svg>";
+  };
+  tm.onchange = chart;
+  chart();
+  table($("ttab"), [
+    {k: "season", label: "Season", l: true, fmt: seasonSoFar}, {k: "matches", label: "Matches"}, {k: "frames", label: "Frames"},
+    {k: "frame_time", label: "Avg frame", fmt: mmss}, {k: "avg_break", label: "Avg break"},
+    {k: "c_per_100", label: "100s/100 fr"}, {k: "f_per_100", label: "50s/100 fr"},
+    {k: "pts_frame", label: "Pts/frame"}, {k: "decider_pct", label: "Decider %"},
+  ], tr, {sort: "season"});
+})();
+</script>
+</body>
+</html>

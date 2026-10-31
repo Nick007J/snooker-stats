@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tournament</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <h1 id="title">Tournament</h1>
+  <p class="sub" id="sub"></p>
+  <div class="controls" id="views" hidden>
+    <div class="seg"><button data-v="draw">Draw</button><button data-v="list">Matches</button></div>
+  </div>
+  <div id="draw"></div>
+  <div id="out"></div>
+</main>
+<script src="app.js"></script>
+<script>
+const GROUP = /league|robin/i;  // Champion of Champions "groups" are knockouts; real groups show in the results
+
+// Knockout trees rebuilt from the players' paths: a match's feeders are each player's previous match,
+// if they won it and its loser played no more (group or league games stop the tree). A tree's root is
+// a match whose winner plays no more: the final, or each qualifying section's last round.
+// A round's place in the event, for matches of one day without start times (cuetracker lists the final first):
+// "Round 2" / "Qualifying Round 2" before "Last 128" / "Last_32" before the quarter-finals; null when the name
+// says nothing (a group, no name): those keep their order.
+function roundRank(r) {
+  r = (r || "").toLowerCase().replace(/_/g, " ");
+  let m;
+  if ((m = r.match(/round (\d+)/))) return -1e6 + +m[1];
+  if ((m = r.match(/last (\d+)/))) return -m[1];
+  return r.includes("quarter") ? -8 : r.includes("semi") ? -4 : /\bfinal\b/.test(r) ? -2 : null;
+}
+const byRound = (a, b) => {
+  const ra = roundRank(a), rb = roundRank(b);
+  return ra == null || rb == null ? 0 : ra - rb;
+};
+
+function trees(ms) {
+  const order = ms.map((m, i) => i).sort((a, b) =>
+    (ms[a].date || "").localeCompare(ms[b].date || "") || (ms[a].start || "").localeCompare(ms[b].start || "") ||
+    byRound(ms[a].round, ms[b].round) || a - b);
+  const byPlayer = {};
+  const win = m => m.f[0] > m.f[1] ? 0 : m.f[1] > m.f[0] ? 1 : -1;
+  order.forEach(i => { for (const p of ms[i].p) (byPlayer[p] ||= []).push(i); });
+  // Several rounds a day without start times (cuetracker results): a player's loss that day comes last.
+  const lost = (i, p) => win(ms[i]) >= 0 && ms[i].p[win(ms[i])] !== p;
+  for (const [p, l] of Object.entries(byPlayer))
+    l.sort((a, b) => (ms[a].date || "").localeCompare(ms[b].date || "") || lost(a, p) - lost(b, p) || order.indexOf(a) - order.indexOf(b));
+  const last = p => byPlayer[p][byPlayer[p].length - 1];
+  // Group stage: games whose loser played on, and anything up to their last day in the same format
+  // (frames to win), which catches each group's last game.
+  const toWin = m => Math.max(m.f[0] ?? 0, m.f[1] ?? 0);
+  let groupGames = ms.filter((m, i) => win(m) >= 0 && last(m.p[1 - win(m)]) !== i);
+  if (groupGames.length < ms.length / 10) groupGames = [];  // a stray result, not a group stage
+  const groupWin = new Set(groupGames.map(toWin)), groupEnd = groupGames.reduce((d, m) => m.date > d ? m.date : d, "");
+  const isGroup = m => GROUP.test(m.round || "") || groupWin.has(toWin(m)) && (m.date || "") <= groupEnd;
+  const isKo = i => win(ms[i]) >= 0 && !isGroup(ms[i]) && last(ms[i].p[1 - win(ms[i])]) === i;
+  const feeder = (i, p) => {
+    const l = byPlayer[p], k = l.indexOf(i), c = k > 0 ? l[k - 1] : null;
+    return c != null && isKo(c) && ms[c].p[win(ms[c])] === p ? c : null;
+  };
+  const build = i => ({i, kids: ms[i].p.map(p => feeder(i, p)).map(c => c == null ? null : build(c))});
+  const size = n => n ? 1 + size(n.kids[0]) + size(n.kids[1]) : 0;
+  const roots = order.filter(i => isKo(i) && last(ms[i].p[win(ms[i])]) === i).map(build);
+  const big = Math.max(0, ...roots.map(size));
+  return roots.filter(r => size(r) >= 3 && size(r) >= big / 4);
+}
+
+function roundName(depth, ms, nodes, single) {
+  const labels = [...new Set(nodes.map(n => ms[n.i].round).filter(Boolean))];
+  if (labels.length === 1) return labels[0].replace(/_/g, " ");
+  if (!single) return "";
+  return ["Final", "Semi-finals", "Quarter-finals"][depth] || `Last ${2 ** (depth + 1)}`;
+}
+
+function drawBracket(el, t, roots) {
+  const ms = t.matches, W = 220, GAP = 34, H = 50, ROW = 58;
+  let rows = 0, depth = 0;
+  const cols = [];  // depth -> nodes
+  const place = (n, d) => {  // leaves take the next row; a parent sits between its feeders
+    const kids = n.kids.filter(Boolean);
+    kids.forEach(k => place(k, d + 1));
+    n.d = d;
+    n.y = kids.length ? kids.reduce((s, k) => s + k.y, 0) / kids.length : rows++;
+    depth = Math.max(depth, d);
+    (cols[d] ||= []).push(n);
+  };
+  roots.forEach(r => { place(r, 0); rows += 0.4; });
+  const x = d => (depth - d) * (W + GAP), y = n => 26 + n.y * ROW;
+  const line = (m, i) => {
+    const w = m.f[0] > m.f[1] ? 0 : m.f[1] > m.f[0] ? 1 : -1;
+    const score = m.wo ? (w === i ? "w/o" : "") : m.f[i] ?? "";  // a walkover: who got it, not 4-0
+    return `<div class="bl ${w === i ? "w" : ""}"><span>${esc(m.p[i])}</span><b>${score}</b></div>`;
+  };
+  let boxes = "", paths = "", heads = "";
+  cols.forEach((nodes, d) => {
+    heads += `<div class="bh" style="left:${x(d)}px;width:${W}px">${esc(roundName(d, ms, nodes, roots.length === 1))}</div>`;
+    for (const n of nodes) {
+      const m = ms[n.i];
+      boxes += `<a class="bm panel ${dlClass(m.dl)}" style="left:${x(d)}px;top:${y(n)}px;width:${W}px;height:${H}px" ` +
+        `href="match.html?t=${encodeURIComponent(qs("t"))}&m=${encodeURIComponent(m.id)}" title="${esc([m.date, m.round].filter(Boolean).join(" · "))}">` +
+        line(m, 0) + line(m, 1) + "</a>";
+      n.kids.forEach((k, i) => {
+        if (!k) return;
+        const x1 = x(d + 1) + W, y1 = y(k) + H / 2, x2 = x(d), y2 = y(n) + (i ? H * 0.75 : H * 0.25), xm = x1 + GAP / 2;
+        paths += `<path d="M${x1} ${y1}H${xm}V${y2}H${x2}"/>`;
+      });
+    }
+  });
+  const width = (depth + 1) * (W + GAP) - GAP, height = 26 + rows * ROW;
+  el.innerHTML = `<div class="scroll bracket"><div class="bc" style="width:${width}px;height:${height}px">${heads}` +
+    `<svg width="${width}" height="${height}">${paths}</svg>${boxes}</div></div>`;
+}
+
+(async () => {
+  const file = qs("t");
+  const t = await load(`data/t/${file}.json`);
+  document.title = t.name;
+  document.getElementById("title").textContent = t.name;
+  const roots = trees(t.matches);
+  const count = n => n ? 1 + count(n.kids[0]) + count(n.kids[1]) : 0;
+  const inDraw = roots.reduce((s, r) => s + count(r), 0);
+  document.getElementById("sub").textContent = `${t.matches.length} matches` +
+    (inDraw && inDraw < t.matches.length ? ` · the draw shows ${inDraw}; the rest are group games or lost the thread (missing matches)` : "");
+  document.getElementById("sub").insertAdjacentHTML("afterend", dlKey());
+
+  const rows = t.matches.map(m => {
+    const best = Math.max(...m.frames.flatMap(f => f.v.filter(v => !v[2]).map(v => v[1])), ...m.frames.flatMap(f => f.b50.filter(Boolean)), 0);
+    return {id: m.id, date: m.date, round: m.round, p1: m.p[0], p2: m.p[1], score: m.wo ? "w/o" : `${m.f[0] ?? "?"}–${m.f[1] ?? "?"}`, wo: m.wo ? (m.f[0] > m.f[1] ? 1 : m.f[1] > m.f[0] ? 2 : 0) : 0,
+            frames: m.frames.length, best: best || null, dl: m.dl,
+            detail: DL[m.dl]};
+  });
+  table(document.getElementById("out"), [
+    {k: "date", label: "Date", l: true}, {k: "round", label: "Round", l: true},
+    {k: "p1", label: "Player 1", l: true, html: r => r.wo === 1 ? `<b>${playerLink(r.p1)}</b>` : playerLink(r.p1)},
+    {k: "score", label: "Score", html: r => matchLink(t.id, r.id, esc(r.score))},
+    {k: "p2", label: "Player 2", l: true, html: r => r.wo === 2 ? `<b>${playerLink(r.p2)}</b>` : playerLink(r.p2)},
+    {k: "best", label: "Top break"}, {k: "detail", label: "Data", l: true},
+  ], rows, {sort: "date", asc: true, limit: 3000, rowClass: r => dlClass(r.dl)});
+
+  const rounds = n => n ? 1 + Math.max(rounds(n.kids[0]), rounds(n.kids[1])) : 0;
+  if (!roots.length || inDraw < 0.3 * t.matches.length && Math.max(...roots.map(rounds)) < 3) return;
+  drawBracket(document.getElementById("draw"), t, roots);
+  const views = document.getElementById("views");
+  views.hidden = false;
+  const show = v => {
+    document.getElementById("draw").hidden = v !== "draw";
+    document.getElementById("out").hidden = v === "draw";
+    views.querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.v === v));
+    const u = new URL(location.href);
+    if (v === "draw") u.searchParams.delete("view"); else u.searchParams.set("view", v);
+    history.replaceState(null, "", u);
+  };
+  views.querySelectorAll("button").forEach(b => b.onclick = () => show(b.dataset.v));
+  show(qs("view") === "list" ? "list" : "draw");
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Snooker Records</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <h1>Records</h1>
+  <p class="sub">From frames with visit data, except highest breaks and centuries, which also use the official breaks from the wst.tv feed.
+    Frame times count only where the clock is believable: under 6 minutes needs the three-miss rule, or from 4 minutes
+    a visit breakdown showing one big break.
+    Professional includes Q School.</p>
+  <div class="controls">
+    <label>Scope <select id="scope"><option value="pro">Professional</option><option value="amateur">Amateur</option></select></label>
+    <label>Rows <select id="n"><option>10</option><option selected>25</option><option>100</option></select></label>
+  </div>
+  <div class="records" id="out"></div>
+</main>
+<script src="app.js"></script>
+<script>
+const TIME_KEYS = new Set(["frame_time", "short_frame_time"]);
+async function render() {
+  const all = await load("data/records.json");
+  const recs = all[document.getElementById("scope").value] || {};
+  const n = +document.getElementById("n").value;
+  const out = document.getElementById("out");
+  out.innerHTML = "";
+  for (const [key, r] of Object.entries(recs)) {
+    const box = document.createElement("div");
+    box.className = "panel";
+    box.innerHTML = `<h3>${esc(r.title)}</h3><div></div>`;
+    out.appendChild(box);
+    const rows = r.rows.slice(0, n);
+    table(box.lastChild, [
+      {k: "#", label: "#"},
+      {k: "v", label: "", html: x => matchLink(x.t, x.m, esc(TIME_KEYS.has(key) ? mmss(x.v) : num(x.v)), x.f)},
+      {k: "who", label: "", l: true, html: x => x.pl ? playerLink(x.pl) : `${playerLink(x.p1)} v ${playerLink(x.p2)}`},
+      {k: "d", label: "", l: true, html: x => matchLink(x.t, x.m, `${esc(x.tn)}${x.f ? ", fr " + x.f : ""}`, x.f) +
+        ` <span class="muted">${esc(x.s)}${x.x ? ", " + esc(x.x) : ""}${x.d ? " · " + x.d : ""}</span>`},
+    ], rows, {limit: n});
+  }
+}
+document.getElementById("scope").onchange = render;
+document.getElementById("n").onchange = render;
+render();
+</script>
+</body>
+</html>

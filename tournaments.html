@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Snooker Tournaments</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <h1>Tournaments</h1>
+  <div class="seg" id="scope"><button data-s="pro">Professional</button><button data-s="amateur">Amateur</button></div>
+  <div class="controls">
+    <label>Search <input id="q" placeholder="name" style="width:200px"></label>
+    <label>Season <select id="ssn"></select></label>
+  </div>
+  <div id="out"></div>
+</main>
+<script src="app.js"></script>
+<script>
+(async () => {
+  const ts = await load("data/tournaments.json");
+  const $ = id => document.getElementById(id);
+  let scope = qs("scope") === "amateur" ? "amateur" : "pro";
+  const inScope = () => ts.filter(t => scope === "pro" ? t.pro || t.qs : !(t.pro || t.qs));
+  const ssnLabel = s => s == null ? "Unknown season" : season(s);
+  const newest = (a, b) => b === "" ? -1 : a === "" ? 1 : b - a;  // "" = unknown season, last
+  const fillSeasons = () => {
+    const keep = $("ssn").value;
+    const ss = [...new Set(inScope().map(t => t.season ?? ""))].sort(newest);
+    $("ssn").innerHTML = '<option value="all">All seasons</option>' + ss.map(s => `<option value="${s}">${ssnLabel(s === "" ? null : s)}</option>`).join("");
+    $("ssn").value = ss.map(String).includes(keep) ? keep : "all";
+  };
+  // A Championship League edition's groups / stages / weeks (t.series) as one row that opens to its parts.
+  const editions = list => {
+    const out = [], by = new Map();
+    list.forEach(t => {
+      if (!t.series) return out.push(t);
+      if (!by.has(t.series)) { by.set(t.series, {name: t.series, season: t.season, parts: []}); out.push(by.get(t.series)); }
+      by.get(t.series).parts.push(t);
+    });
+    by.forEach(e => {
+      const ps = e.parts.sort((a, b) => (a.end || "").localeCompare(b.end || "") || a.name.localeCompare(b.name));
+      const sum = k => ps.reduce((a, x) => a + (x[k] || 0), 0);
+      const mean = k => { const w = ps.filter(x => x[k] != null && x.frames); const f = w.reduce((a, x) => a + x.frames, 0);
+        return f ? w.reduce((a, x) => a + x[k] * x.frames, 0) / f : null; };
+      Object.assign(e, {dl: Math.max(...ps.map(x => x.dl || 0)), start: ps[0].start, end: ps[ps.length - 1].end, matches: sum("matches"), frames: sum("frames"), b100: sum("b100"),
+        high_break: Math.max(...ps.map(x => x.high_break || 0)) || null, avg_break: mean("avg_break"),
+        avg_frame_time: mean("avg_frame_time")});
+      if (e.avg_break != null) e.avg_break = Math.round(e.avg_break * 10) / 10;
+    });
+    return out;
+  };
+  const render = () => {
+    document.querySelectorAll("#scope button").forEach(b => b.classList.toggle("on", b.dataset.s === scope));
+    const q = $("q").value.toLowerCase(), sv = $("ssn").value;
+    const rows = editions(inScope().filter(t => (!q || (t.name + " " + (t.series || "")).toLowerCase().includes(q))
+      && (sv === "all" || String(t.season ?? "") === sv)));
+    const by = new Map();
+    rows.forEach(t => { const k = t.season ?? ""; if (!by.has(k)) by.set(k, []); by.get(k).push(t); });
+    const keys = [...by.keys()].sort(newest);
+    const out = $("out");
+    out.innerHTML = keys.length ? dlKey() : '<p class="muted">No tournaments found.</p>';
+    keys.forEach(k => {
+      const g = by.get(k);
+      out.insertAdjacentHTML("beforeend", `<h2>${ssnLabel(k === "" ? null : +k)} · ${g.length} tournament${g.length === 1 ? "" : "s"}</h2><div></div>`);
+      table(out.lastElementChild, [
+        {k: "end", label: "Finished", l: true},
+        {k: "name", label: "Tournament", l: true, html: t => t.parts
+          ? `<details><summary>${esc(t.name)} <span class="pill">${t.parts.length} parts</span></summary>` +
+            t.parts.map(x => `<div class="${dlClass(x.dl)}"><a href="tournament.html?t=${encodeURIComponent(x.file)}">${esc(x.name)}</a> ` +
+              `<span class="muted small">${x.end || ""} · ${x.matches} matches</span></div>`).join("") + "</details>"
+          : `<a href="tournament.html?t=${encodeURIComponent(t.file)}">${esc(t.name)}</a>` +
+          (t.qs ? ' <span class="pill">Q School</span>' : "") + (t.variant ? ' <span class="pill">variant</span>' : "") +
+          (t.team ? ' <span class="pill">teams</span>' : "")},
+        {k: "matches", label: "Matches"}, {k: "frames", label: "Frames"},
+        {k: "avg_break", label: "Avg break"}, {k: "b100", label: "100+"}, {k: "high_break", label: "Highest"},
+        {k: "avg_frame_time", label: "Avg frame", fmt: mmss},
+      ], g, {sort: "end", limit: 2000, rowClass: t => dlClass(t.dl)});
+    });
+    try {
+      const u = new URL(location.href);
+      u.searchParams.set("scope", scope);
+      history.replaceState(null, "", u);
+    } catch (e) {}
+  };
+  document.querySelectorAll("#scope button").forEach(b => b.onclick = () => { scope = b.dataset.s; fillSeasons(); render(); });
+  $("q").oninput = render;
+  $("ssn").onchange = render;
+  fillSeasons();
+  render();
+})();
+</script>
+</body>
+</html>

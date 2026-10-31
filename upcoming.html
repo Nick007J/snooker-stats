@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Upcoming Events</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <h1>Upcoming</h1>
+  <p class="sub" id="sub">The WST calendar from wst.tv, and the amateur events in our scope from the organisers' own
+    pages (IBSF, ACBS, EBSA and the snookerscores.net organisers). Amateur events more than three months ahead aren't shown yet.</p>
+  <div class="seg" id="scope"><button data-s="all">All</button><button data-s="wst">WST</button><button data-s="amateur">Amateur</button></div>
+  <div id="out"></div>
+</main>
+<script src="app.js"></script>
+<script>
+(async () => {
+  let d;
+  try { d = await load("data/upcoming.json"); } catch (e) { d = {events: []}; }
+  const day = n => new Date(Date.now() + n * 864e5).toISOString().slice(0, 10);
+  const today = day(0), recent = day(-7), horizon = day(92);
+  const rows = d.events
+    .filter(e => e.org === "WST" || !e.start || e.start <= horizon.slice(0, e.start.length))  // amateur: the next 3 months
+    .map(e => ({...e, when: e.dates || "TBC", sortKey: e.start || "9999",
+      now: e.start && e.start.length === 10 && e.start <= today ? "on now" : e.first_seen >= recent ? "new" : ""}));
+  if (d.checked) document.getElementById("sub").insertAdjacentHTML("beforeend", ` Checked ${esc(d.checked)}.`);
+  let scope = ["wst", "amateur"].includes(qs("scope")) ? qs("scope") : "all";
+  const render = () => {
+    document.querySelectorAll("#scope button").forEach(b => b.classList.toggle("on", b.dataset.s === scope));
+    const shown = rows.filter(r => scope === "all" || (scope === "wst") === (r.org === "WST"));
+    if (!shown.length) { document.getElementById("out").innerHTML = '<p class="muted">Nothing announced yet.</p>'; return; }
+    table(document.getElementById("out"), [
+      {k: "sortKey", label: "Dates", l: true, html: r => esc(r.when) + (r.now ? ` <span class="muted small">${r.now}</span>` : "")},
+      {k: "name", label: "Event", l: true, html: r => `<a href="${esc(r.link)}" target="_blank" rel="noopener">${esc(r.name)}</a>` +
+        (r.parts ? "<br>" + r.parts.map(p => `<a class="small" href="${esc(p.link)}" target="_blank" rel="noopener">${esc(p.name)}</a>`).join(" · ") : "")},
+      {k: "org", label: "Organiser", l: true},
+      {k: "where", label: "Where", l: true},
+    ], shown, {sort: "sortKey", asc: true});
+    try {
+      const u = new URL(location.href);
+      if (scope === "all") u.searchParams.delete("scope"); else u.searchParams.set("scope", scope);
+      history.replaceState(null, "", u);
+    } catch (e) {}
+  };
+  document.querySelectorAll("#scope button").forEach(b => b.onclick = () => { scope = b.dataset.s; render(); });
+  render();
+})();
+</script>
+</body>
+</html>
