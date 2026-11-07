@@ -1,0 +1,365 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tournament</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <h1 id="title">Tournament</h1>
+  <p class="sub" id="sub"></p>
+  <div class="controls" id="views" hidden>
+    <div class="seg"><button data-v="draw">Draw</button><button data-v="groups" hidden>Groups</button><button data-v="list">Matches</button></div>
+  </div>
+  <div id="draw"></div>
+  <div id="groups" class="groups" hidden></div>
+  <div id="out"></div>
+</main>
+<script src="app.js"></script>
+<script>
+// Champion of Champions "groups" are knockouts; real groups show in the results. esnooker.pl names a group game by
+// the places of its players ("J3 - J4": group J, third v fourth)
+const GROUP = /league|robin|^[A-Z]{1,2}\d+\s*-\s*[A-Z]{1,2}\d+$/i;
+const KO = /^(?!.*group)(?:.*\blast[ _]\d+\b|.*\bquarter|.*\bsemi|final$)/i;  // "Final Group" is a group
+
+// Knockout trees rebuilt from the players' paths: a match's feeders are each player's previous match,
+// if they won it and its loser played no more (group or league games stop the tree). A tree's root is
+// a match whose winner plays no more: the final, or each qualifying section's last round.
+// A round's place in the event, for matches of one day without start times (cuetracker lists the final first):
+// "Round 2" / "Qualifying Round 2" before "Last 128" / "Last_32" before the quarter-finals; null when the name
+// says nothing (a group, no name): those keep their order.
+function roundRank(r) {
+  r = (r || "").toLowerCase().replace(/_/g, " ");
+  let m;
+  if ((m = r.match(/round (\d+)/))) return -1e6 + +m[1];
+  if ((m = r.match(/last (\d+)/))) return -m[1];
+  return r.includes("quarter") ? -8 : r.includes("semi") ? -4 : /\bfinal\b/.test(r) ? -2 : null;
+}
+const byRound = (a, b) => {
+  const ra = roundRank(a), rb = roundRank(b);
+  return ra == null || rb == null ? 0 : ra - rb;
+};
+
+function trees(ms) {
+  // a day's matches by start time, by round where one has none (cuetracker's: 2021 Champion of Champions, Higgins v
+  // O'Sullivan's quarter-final came before their Last 16 that day)
+  // (a group game or a round of no known place before the knockout rounds then: 2023 ACBS 6 Reds, a Last 20 of no
+  // start time and the morning's group games)
+  const early = r => roundRank(r) ?? -1e9;
+  const order = ms.map((m, i) => i).sort((a, b) =>
+    (ms[a].date || "").localeCompare(ms[b].date || "") ||
+    (ms[a].start && ms[b].start ? ms[a].start.localeCompare(ms[b].start) : early(ms[a].round) - early(ms[b].round)) ||
+    byRound(ms[a].round, ms[b].round) || a - b);
+  const byPlayer = {};
+  const win = m => m.f[0] > m.f[1] ? 0 : m.f[1] > m.f[0] ? 1 : -1;
+  // a match for third place (esnooker's "Final_B": the beaten semi-finalists) isn't in the draw, and its players
+  // didn't play on from their semi-final
+  const PLAYOFF = /^final[ _]b$|third place|3rd place/i;
+  order.forEach(i => { if (!PLAYOFF.test(ms[i].round || "")) for (const p of ms[i].p) (byPlayer[p] ||= []).push(i); });
+  // Several rounds a day without start times (cuetracker results): a player's loss that day comes last.
+  const lost = (i, p) => win(ms[i]) >= 0 && ms[i].p[win(ms[i])] !== p;
+  // (only where a start time is missing: with both, the clock says; 2025 EBSA U-21, Boyes lost a group game at 09:51
+  // and won his Last 44 at 15:24)
+  for (const [p, l] of Object.entries(byPlayer))
+    l.sort((a, b) => (ms[a].date || "").localeCompare(ms[b].date || "") ||
+      (ms[a].start && ms[b].start ? 0 : early(ms[a].round) - early(ms[b].round) || lost(a, p) - lost(b, p)) ||
+      order.indexOf(a) - order.indexOf(b));
+  const last = p => (byPlayer[p] || []).at(-1);
+  // Group stage: games whose loser played on, and anything up to their last day in the same format
+  // (frames to win), which catches each group's last game.
+  const toWin = m => Math.max(m.f[0] ?? 0, m.f[1] ?? 0);
+  let groupGames = ms.filter((m, i) => win(m) >= 0 && !PLAYOFF.test(m.round || "") && last(m.p[1 - win(m)]) !== i);
+  if (groupGames.length < ms.length / 10) groupGames = [];  // a stray result, not a group stage
+  const groupWin = new Set(groupGames.map(toWin)), groupEnd = groupGames.reduce((d, m) => m.date > d ? m.date : d, "");
+  // a round named as a knockout one is never a group game, though it shares the groups' format and last day
+  // (2020 WSF Junior Open: the groups ended the day of the Last 64, 32 and 16, all best of 5)
+  const isGroup = m => GROUP.test(m.round || "") || !KO.test(m.round || "") && groupWin.has(toWin(m)) && (m.date || "") <= groupEnd;
+  const isKo = i => win(ms[i]) >= 0 && !isGroup(ms[i]) && last(ms[i].p[1 - win(ms[i])]) === i;
+  const feeder = (i, p) => {
+    const l = byPlayer[p], k = l.indexOf(i), c = k > 0 ? l[k - 1] : null;
+    return c != null && isKo(c) && ms[c].p[win(ms[c])] === p ? c : null;
+  };
+  const build = i => ({i, kids: ms[i].p.map(p => feeder(i, p)).map(c => c == null ? null : build(c))});
+  const size = n => n ? 1 + size(n.kids[0]) + size(n.kids[1]) : 0;
+  const roots = order.filter(i => isKo(i) && last(ms[i].p[win(ms[i])]) === i).map(build);
+  const big = Math.max(0, ...roots.map(size));
+  return roots.filter(r => size(r) >= 3 && size(r) >= big / 4);
+}
+
+// WST's own draw, when the tournament has it: each match's fixture number and the fixtures whose winners fill its
+// places (m.fx = [fixture, feeder of player 1, feeder of player 2]; null: seeded or from the qualifiers), with the
+// fixtures not played yet (t.todo) as empty boxes, so the draw of an event in progress shows and grows.
+// Events drawn afresh each round (Shoot Out, British Open) keep the first round's links: when more than 1 in 50
+// links name someone other than the feeder's winner, null (the players' paths decide).
+function fixtureTrees(t) {
+  if (![...t.matches, ...(t.todo || [])].some(m => m.fx && (m.fx[1] != null || m.fx[2] != null))) return null;
+  const items = [...t.matches, ...(t.todo || []).map(x => ({...x, f: [null, null], frames: [], todo: true}))];
+  const at = {};
+  items.forEach((m, i) => { if (m.fx) at[m.fx[0]] = i; });
+  const win = m => m.f[0] > m.f[1] ? 0 : m.f[1] > m.f[0] ? 1 : -1;
+  const open = p => !p || /^winner of/i.test(p);  // "Winner of Match 41": not allocated yet
+  const nameKey = p => p.toLowerCase().normalize("NFD").replace(/[^a-z ]/g, "").split(/\s+/).sort().join(" ");
+  let ok = 0, bad = 0;
+  for (const m of items) {
+    if (!m.fx) continue;
+    for (const s of [0, 1]) {
+      const k = at[m.fx[s + 1]], f = k == null ? null : items[k];
+      if (!f || win(f) < 0) continue;
+      if (open(m.p[s])) {
+        if (m.todo) m.p = Object.assign([...m.p], {[s]: f.p[win(f)]});  // the feeder is played: its winner
+      } else if (nameKey(m.p[s]) === nameKey(f.p[win(f)])) ok++;
+      else bad++;
+    }
+  }
+  if (bad > ok / 50) return null;
+  const fed = new Set(items.flatMap(m => m.fx ? [at[m.fx[1]], at[m.fx[2]]] : []).filter(k => k != null));
+  const seen = new Set();
+  const build = i => {
+    seen.add(i);
+    const kids = [1, 2].map(s => at[items[i].fx[s]]).map(k => k == null || seen.has(k) ? null : build(k));
+    return {i, kids};
+  };
+  const roots = items.map((m, i) => i).filter(i => items[i].fx && !fed.has(i))
+    .sort((a, b) => items[a].fx[0] - items[b].fx[0]).map(build);
+  // a column per round, the latest first (WST numbers the fixtures round by round), when every feeder sits left
+  // of its match; else by the depth in the tree
+  const rounds = {};
+  items.forEach(m => { if (m.fx && m.round) (rounds[m.round] ||= []).push(m.fx[0]); });
+  const med = l => l.sort((a, b) => a - b)[l.length >> 1];
+  const order = Object.keys(rounds).sort((a, b) => med(rounds[b]) - med(rounds[a]));
+  const col = n => items[n.i].round ? order.indexOf(items[n.i].round) : -1;
+  const fits = n => col(n) >= 0 && n.kids.every(k => !k || col(k) > col(n) && fits(k));
+  return {items, roots, col: roots.every(fits) ? col : null};
+}
+
+// Group standings. A group game's group from its round: "Group 3", "Group A", "Group" (the event is one), "Winners Group",
+// WST's "League Phase (STAGE ONE / WEEK 1)", esnooker's place codes ("J3 - J4": group J). A group's play-offs ("Group 1 -
+// Semi-final") aren't table games. Ranked by wins, then frame difference, then frames won (organisers' tie-breaks vary).
+function groupOf(round) {
+  const r = (round || "").trim();
+  let m;
+  if ((m = r.match(/^([A-Z]{1,2})\d+\s*-\s*\1\d+$/))) return `Group ${m[1]}`;
+  if (/^(?:winners |final )?group(?: [A-Z0-9]{1,3})?$/i.test(r) || /^league phase\b/i.test(r) || /round robin/i.test(r) ||
+      /^stage (?:one|two|three|\d)(?:\s*\/\s*w(?:ee)?k\s*\d+)?$/i.test(r)) return r;
+  return null;
+}
+const naturally = (a, b) => a.length - b.length || a.localeCompare(b);  // Group 2 before Group 10, Z before AA
+
+function standings(ms) {
+  const byRound = new Map();  // group round -> its games
+  for (const m of ms) {
+    const g = groupOf(m.round);
+    if (g && m.f[0] != null && m.f[1] != null && (m.f[0] || m.f[1])) (byRound.get(g) || byRound.set(g, []).get(g)).push(m);
+  }
+  // several groups under one round name (Championship League's "Stage One/WK1": a week of groups): players meet
+  // only within their group, so the groups are the sets of players linked by games
+  const groups = [];
+  for (const [name, games] of [...byRound].sort((a, b) => naturally(a[0], b[0]))) {
+    const up = {};
+    const find = p => up[p] === p ? p : (up[p] = find(up[p]));
+    games.forEach(m => m.p.forEach(p => up[p] ??= p));
+    games.forEach(m => { up[find(m.p[0])] = find(m.p[1]); });
+    const parts = new Map();
+    games.forEach(m => (parts.get(find(m.p[0])) || parts.set(find(m.p[0]), []).get(find(m.p[0]))).push(m));
+    const split = parts.size > 1;
+    [...parts.values()].forEach((part, k) => groups.push({name: split ? `${name} · group ${k + 1}` : name, games: part}));
+  }
+  return groups.map(({name, games}) => {
+    const rows = new Map();
+    let draws = 0, wo = 0;
+    for (const m of games) {
+      const d = m.f[0] === m.f[1];
+      draws += d; wo += m.wo ? 1 : 0;
+      m.p.forEach((p, i) => {
+        const r = rows.get(p) || rows.set(p, {player: p, pl: 0, w: 0, d: 0, l: 0, fw: 0, fl: 0, hb: null}).get(p);
+        r.pl++;
+        r[d ? "d" : m.f[i] > m.f[1 - i] ? "w" : "l"]++;
+        if (!m.wo) { r.fw += m.f[i]; r.fl += m.f[1 - i]; }
+        if (m.hb && m.hb[i] && (r.hb == null || m.hb[i] > r.hb)) r.hb = m.hb[i];
+      });
+    }
+    // with draws (Championship League, best of 4): 3 points a win, 1 a draw
+    const list = [...rows.values()].map(r => ({...r, fd: r.fw - r.fl, pts: 3 * r.w + r.d}))
+      .sort((a, b) => (draws ? b.pts - a.pts : b.w - a.w) || b.fd - a.fd || b.fw - a.fw || a.player.localeCompare(b.player));
+    list.forEach((r, i) => r["#"] = i + 1);
+    // a round robin of n players has n(n-1)/2 games: fewer means games we lack
+    const n = list.length, full = n * (n - 1) / 2;
+    return {name, rows: list, games: games.length, wo, draws, missing: games.length < full && n <= 8 ? full - games.length : 0};
+  });
+}
+
+function drawGroups(el, ms, team) {
+  const gs = standings(ms);
+  el.innerHTML = gs.length ? '<p class="muted small" style="grid-column: 1 / -1; margin: 0">Ranked by wins (points, 3 a win and 1 a draw, ' +
+    "where games can be drawn), then frame difference, then frames won; the organisers' own tie-breaks can differ. Group play-offs are in the draw.</p>" : "";
+  for (const g of gs) {
+    const box = document.createElement("div");
+    box.className = "panel group";
+    const note = [g.missing && `${g.missing} game${g.missing > 1 ? "s" : ""} not on record`, g.wo && `${g.wo} walkover${g.wo > 1 ? "s" : ""}`]
+      .filter(Boolean).join(", ");
+    box.innerHTML = `<h3>${esc(g.name.replace(/_/g, " "))}</h3>${note ? `<p class="muted small">${esc(note)}</p>` : ""}<div></div>`;
+    el.appendChild(box);
+    table(box.lastElementChild, [
+      {k: "#", label: "#"}, {k: "player", label: team ? "Team" : "Player", l: true, html: r => team ? esc(r.player) : playerLink(r.player)},
+      {k: "pl", label: "P"}, {k: "w", label: "W"}, ...(g.draws ? [{k: "d", label: "D"}] : []), {k: "l", label: "L"},
+      {k: "fw", label: "Frames", html: r => `${r.fw}–${r.fl}`}, {k: "fd", label: "+/−", fmt: v => v > 0 ? `+${v}` : String(v)},
+      ...(g.draws ? [{k: "pts", label: "Pts"}] : []), {k: "hb", label: "Highest"},
+    ], g.rows, {sort: "#", asc: true});
+  }
+  return gs.length;
+}
+
+function roundName(depth, ms, nodes, single) {
+  const labels = [...new Set(nodes.map(n => ms[n.i].round).filter(Boolean))];
+  if (labels.length === 1) return labels[0].replace(/_/g, " ");
+  if (!single) return "";
+  return ["Final", "Semi-finals", "Quarter-finals"][depth] || `Last ${2 ** (depth + 1)}`;
+}
+
+function drawBracket(el, ms, roots, col) {
+  const W = 220, GAP = 34, H = 50, ROW = 58;
+  let rows = 0, depth = 0;
+  const cols = [];  // depth -> nodes
+  const place = (n, d) => {  // leaves take the next row; a parent sits between its feeders
+    const kids = n.kids.filter(Boolean);
+    kids.forEach(k => place(k, d + 1));
+    n.d = col ? col(n) : d;
+    n.y = kids.length ? kids.reduce((s, k) => s + k.y, 0) / kids.length : rows++;
+    depth = Math.max(depth, n.d);
+    (cols[n.d] ||= []).push(n);
+  };
+  roots.forEach(r => { place(r, 0); rows += 0.4; });
+  const x = d => (depth - d) * (W + GAP), y = n => 26 + n.y * ROW;
+  const line = (m, i) => {
+    const w = m.f[0] > m.f[1] ? 0 : m.f[1] > m.f[0] ? 1 : -1;
+    const score = m.wo ? (w === i ? "w/o" : "") : m.f[i] ?? "";  // a walkover: who got it, not 4-0
+    const open = m.todo && /^winner of/i.test(m.p[i] || "");
+    return `<div class="bl ${w === i ? "w" : ""}${open ? " open" : ""}"><span>${esc(m.p[i] || "")}</span><b>${score}</b></div>`;
+  };
+  let boxes = "", paths = "", heads = "";
+  cols.forEach((nodes, d) => {
+    heads += `<div class="bh" style="left:${x(d)}px;width:${W}px">${esc(roundName(d, ms, nodes, roots.length === 1))}</div>`;
+    for (const n of nodes) {
+      const m = ms[n.i], pos = `style="left:${x(d)}px;top:${y(n)}px;width:${W}px;height:${H}px"`;
+      boxes += m.todo  // not played yet: no match page
+        ? `<div class="bm panel todo" ${pos} title="${esc([m.start ? m.start.replace("T", " ").slice(0, 16) : m.date, m.round, m.st].filter(Boolean).join(" · "))}">` +
+          line(m, 0) + line(m, 1) + "</div>"
+        : `<a class="bm panel ${dlClass(m.dl)}" ${pos} ` +
+          `href="match.html?t=${encodeURIComponent(m.tf || qs("t"))}&m=${encodeURIComponent(m.id)}" title="${esc([m.date, m.round].filter(Boolean).join(" · "))}">` +
+          line(m, 0) + line(m, 1) + "</a>";
+      n.kids.forEach((k, i) => {
+        if (!k) return;
+        const x1 = x(k.d) + W, y1 = y(k) + H / 2, x2 = x(d), y2 = y(n) + (i ? H * 0.75 : H * 0.25), xm = x1 + GAP / 2;
+        paths += `<path d="M${x1} ${y1}H${xm}V${y2}H${x2}"/>`;
+      });
+    }
+  });
+  const width = (depth + 1) * (W + GAP) - GAP, height = 26 + rows * ROW;
+  el.innerHTML = `<div class="scroll bracket"><div class="bc" style="width:${width}px;height:${height}px">${heads}` +
+    `<svg width="${width}" height="${height}">${paths}</svg>${boxes}</div></div>`;
+}
+
+(async () => {
+  const file = qs("t");
+  const t = await load(`data/t/${file}.json`);
+  document.title = t.name;
+  document.getElementById("title").textContent = t.name;
+  // WST's fixtures when they place more of the played matches than the paths do (an event in progress; the paths
+  // miss the links through matches not played yet), or as many with more to play; and the draw is more than
+  // one round of separate matches (a qualifying event of one round)
+  const played = (items, roots) => {
+    const count = n => n ? (items[n.i].todo ? 0 : 1) + count(n.kids[0]) + count(n.kids[1]) : 0;
+    return roots.reduce((s, r) => s + count(r), 0);
+  };
+  document.getElementById("sub").insertAdjacentHTML("afterend", dlKey());
+  if (t.main) document.getElementById("sub").insertAdjacentHTML("afterend",
+    `<p class="small">Qualifying for <a href="tournament.html?t=${encodeURIComponent(t.main.file)}&quals=1">${esc(t.main.name)}</a></p>`);
+  // the main event alone, or with its qualifiers (t.with: their files). Together the draw is the players' paths:
+  // WST's fixture numbers start again in each tournament
+  const own = t.matches;
+  let view = ["list", "groups"].includes(qs("view")) ? qs("view") : "draw";
+  const render = (t, joined) => {
+  const paths = trees(t.matches);
+  let fx = joined ? null : fixtureTrees(t);
+  if (fx) {
+    const a = played(fx.items, fx.roots), b = played(t.matches, paths), todo = fx.items.some(m => m.todo);
+    if (!(a > b || a === b && todo) || !todo && fx.roots.every(r => !r.kids.some(Boolean))) fx = null;
+  }
+  const items = fx ? fx.items : t.matches, roots = fx ? fx.roots : paths;
+  const inDraw = played(items, roots);
+  const first = (t.todo || []).map(m => m.date).filter(Boolean).sort()[0];
+  document.getElementById("sub").textContent = !t.matches.length && t.todo ? `Not started yet: from ${first || "?"}, ${t.todo.length} matches drawn` :
+    `${t.matches.length} matches` + (joined ? ` with the qualifiers (${t.matches.length - own.length} of them)` : "") +
+    (inDraw && inDraw < t.matches.length ? ` · the draw shows ${inDraw}; the rest are group games or lost the thread (missing matches)` : "");
+
+  const rows = t.matches.map(m => {
+    const best = Math.max(...m.frames.flatMap(f => f.v.filter(v => !v[2]).map(v => v[1])), ...m.frames.flatMap(f => f.b50.filter(Boolean)), 0);
+    return {id: m.id, tid: m.tid || t.id, date: m.date, round: m.round, p1: m.p[0], p2: m.p[1], score: m.wo ? "w/o" : `${m.f[0] ?? "?"}–${m.f[1] ?? "?"}`, wo: m.wo ? (m.f[0] > m.f[1] ? 1 : m.f[1] > m.f[0] ? 2 : 0) : 0,
+            frames: m.frames.length, best: best || null, dl: m.dl,
+            detail: DL[m.dl]};
+  });
+  // nothing played yet: the matches drawn, to play
+  if (!t.matches.length) (t.todo || []).forEach(m => rows.push({id: null, date: m.date, round: m.round, p1: m.p[0], p2: m.p[1],
+    score: "–", wo: 0, frames: 0, best: null, dl: 0, detail: m.start ? `${m.start.slice(11, 16)}, best of ${m.bo}` : ""}));
+  table(document.getElementById("out"), [
+    {k: "date", label: "Date", l: true}, {k: "round", label: "Round", l: true},
+    {k: "p1", label: "Player 1", l: true, html: r => r.wo === 1 ? `<b>${playerLink(r.p1)}</b>` : playerLink(r.p1)},
+    {k: "score", label: "Score", html: r => r.id == null ? esc(r.score) : matchLink(r.tid, r.id, esc(r.score))},
+    {k: "p2", label: "Player 2", l: true, html: r => r.wo === 2 ? `<b>${playerLink(r.p2)}</b>` : playerLink(r.p2)},
+    {k: "best", label: "Top break"}, {k: "detail", label: "Data", l: true},
+  ], rows, {sort: "date", asc: true, limit: 3000, rowClass: r => dlClass(r.dl)});
+
+  const rounds = n => n ? 1 + Math.max(rounds(n.kids[0]), rounds(n.kids[1])) : 0;
+  const views = document.getElementById("views");
+  const drawn = !(!roots.length || !fx && inDraw < 0.3 * t.matches.length && Math.max(...roots.map(rounds)) < 3);
+  document.getElementById("draw").innerHTML = "";
+  if (drawn) drawBracket(document.getElementById("draw"), items, roots, fx && fx.col);
+  const grouped = drawGroups(document.getElementById("groups"), t.matches, t.team) > 0;
+  views.querySelector('[data-v="draw"]').hidden = !drawn;
+  views.querySelector('[data-v="groups"]').hidden = !grouped;
+  views.querySelector(".seg").hidden = !drawn && !grouped;
+  views.hidden = !drawn && !grouped && !t.with;
+  // a round robin with no knockout draw opens on its tables
+  show(view === "groups" && grouped || !drawn && grouped && !qs("view") ? "groups" : drawn && view === "draw" ? "draw" : "list");
+  };
+  const show = v => {
+    if (v === "draw" && !document.getElementById("draw").innerHTML) v = "list";
+    if (v === "groups" && !document.getElementById("groups").innerHTML) v = "list";
+    document.getElementById("draw").hidden = v !== "draw";
+    document.getElementById("groups").hidden = v !== "groups";
+    document.getElementById("out").hidden = v !== "list";
+    document.querySelectorAll("#views .seg button").forEach(b => b.classList.toggle("on", b.dataset.v === v));
+  };
+  const setView = v => {
+    view = v;
+    show(v);
+    const u = new URL(location.href);
+    if (v === "draw") u.searchParams.delete("view"); else u.searchParams.set("view", v);
+    history.replaceState(null, "", u);
+  };
+  document.querySelectorAll("#views .seg button").forEach(b => b.onclick = () => setView(b.dataset.v));
+  render(t, false);
+  if (t.with && t.with.length) {  // the qualifiers too: their matches, each linked to its own tournament
+    const box = document.createElement("label");
+    box.innerHTML = `<input type="checkbox" id="joined"> With the qualifiers (${t.with.map(w => esc(w.name)).join(", ")})`;
+    document.getElementById("views").appendChild(box);
+    document.getElementById("views").hidden = false;
+    let joined = null;
+    const toggle = async on => {
+      if (on && !joined) {
+        const qs_ = await Promise.all(t.with.map(w => load(`data/t/${w.file}.json`)));
+        joined = {...t, todo: [], matches: [...qs_.flatMap((q, i) => q.matches.map(m => ({...m, tid: q.id, tf: t.with[i].file}))), ...own]};
+      }
+      render(on ? joined : t, on);
+      const u = new URL(location.href);
+      if (on) u.searchParams.set("quals", "1"); else u.searchParams.delete("quals");
+      history.replaceState(null, "", u);
+    };
+    document.getElementById("joined").onchange = e => toggle(e.target.checked);
+    if (qs("quals") === "1") { document.getElementById("joined").checked = true; toggle(true); }
+  }
+})();
+</script>
+</body>
+</html>

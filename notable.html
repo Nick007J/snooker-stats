@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Notable frames</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <h1>Notable frames</h1>
+  <div class="controls">
+    <div class="seg" id="views"><button data-v="respotted">Respotted blacks</button><button data-v="snookers">Snookers needed</button><button data-v="threemiss">Three-miss rule</button></div>
+    <label>Players <select id="scope"><option value="pro">Professional</option><option value="amateur">Amateur</option></select></label>
+  </div>
+  <p class="sub" id="about"></p>
+  <p class="muted small" id="count"></p>
+  <div id="out"></div>
+</main>
+<script src="app.js"></script>
+<script>
+(async () => {
+  const data = await load("data/notable.json");
+  const $ = id => document.getElementById(id);
+  const share = (n, of) => of ? ` (${Math.round(100 * n / of)}%)` : "";
+  const col = {
+    date: {k: "d", label: "Date", l: true},
+    match: {k: "p1", label: "Match", l: true, html: r => matchLink(r.t, r.m, `${esc(r.p1)} ${esc(r.s)} ${esc(r.p2)}`, r.f)},
+    frame: {k: "f", label: "Frame"},
+    score: {k: "x", label: "Score", html: r => r.x ? esc(r.x.replace("-", "–")) : "?–?"},
+    won: {k: "w", label: "Won by", l: true},
+    tournament: {k: "tn", label: "Tournament", l: true},
+  };
+  const VIEWS = {
+    respotted: {
+      about: 'Frames level after the final black, so the black went back on the table and the next pot or foul settled them. ' +
+        'Frames with every ball potted on record show it for certain. In frames with breaks only, "likely" is a black on its ' +
+        "own that made the scores level, then another: a first black at the end of a longer break can't be seen there, so " +
+        "those frames show only about a third of them. Frames of 6-reds and team events aren't listed. " +
+        '<span class="bb">Tinted</span>: the Shoot Out\'s equivalent, a blue ball shoot-out for a frame level when time ran out ' +
+        "(its score includes the blue's 5).",
+      count: rs => {
+        const bb = rs.filter(r => r.bb), black = rs.filter(r => !r.bb);
+        const sure = black.filter(r => r.rb === 1).length, lv = black.filter(r => r.lv).length;
+        return `${num(black.length)} respotted blacks: ${num(sure)} certain, ${num(black.length - sure)} likely. The player who made the scores level won ${num(lv)} of them${share(lv, black.length)}.` +
+          (bb.length ? ` ${num(bb.length)} blue ball shoot-outs.` : "");
+      },
+      cols: [col.date, col.match, col.frame, col.score, col.won,
+        {k: "rb", label: "", html: r => r.bb ? '<span class="muted small">blue ball</span>' : r.rb === 2 ? '<span class="muted small">likely</span>' : ""}, col.tournament],
+      sort: "d", rowClass: r => r.bb ? "bb" : "",
+    },
+    threemiss: {
+      about: "Frames lost under the three-miss rule: a player who fails to hit the ball on three times in a row, with a clear " +
+        'view of it, loses the frame. "Likely" is a frame whose visits end on three or more fouls in a row by its loser, ' +
+        "with no more than 80 points scored: the source doesn't say so, but it looks like it. Frames of the Shoot Out, " +
+        "6-reds and team events aren't listed.",
+      count: rs => {
+        const sure = rs.filter(r => r.v === 1).length;
+        return `${num(rs.length)} frames: ${num(sure)} on record as three-miss rule, ${num(rs.length - sure)} likely.`;
+      },
+      cols: [col.date, col.match, col.frame, col.score, col.won, {k: "l", label: "Lost by", l: true},
+        {k: "v", label: "", html: r => r.v === 2 ? '<span class="muted small">likely</span>' : ""}, col.tournament],
+      sort: "d",
+    },
+    snookers: {
+      about: "Frames won by a player who at some point needed snookers: behind by more than the points left on the table. " +
+        "Only frames with the balls or the old live-scoring logs can show it: Nov 2016 to 2023 and from mid-2026, so " +
+        "2011–2016 and 2024 to mid-2026 are missing. Frames of the Shoot Out, 6-reds and team events aren't listed. " +
+        'How often such frames are won: <a href="insights.html">Insights</a>.',
+      count: rs => {
+        const by = k => rs.filter(r => k === 3 ? r.v >= 3 : r.v === k).length;
+        return `${num(rs.length)} frames: ${num(by(1))} needing 1 snooker, ${num(by(2))} needing 2, ${num(by(3))} needing 3 or more.`;
+      },
+      cols: [col.date, col.match, col.frame, col.score, col.won, {k: "v", label: "Snookers needed"}, col.tournament],
+      sort: "v",
+    },
+  };
+  let view;
+  const render = () => {
+    const v = VIEWS[view], rs = (data[view] || []).filter(r => r.scope === $("scope").value);
+    $("about").innerHTML = v.about;
+    $("count").textContent = v.count(rs);
+    table($("out"), v.cols, rs, {sort: v.sort, limit: 5000, rowClass: v.rowClass});
+  };
+  const show = (name, keep) => {
+    view = name;
+    document.querySelectorAll("#views button").forEach(b => b.classList.toggle("on", b.dataset.v === name));
+    if (!keep) {
+      const u = new URL(location);
+      if (name === "respotted") u.searchParams.delete("view"); else u.searchParams.set("view", name);
+      history.replaceState(null, "", u);
+    }
+    render();
+  };
+  document.querySelectorAll("#views button").forEach(b => b.onclick = () => show(b.dataset.v));
+  $("scope").onchange = render;
+  show(VIEWS[qs("view")] ? qs("view") : "respotted", true);
+})();
+</script>
+</body>
+</html>

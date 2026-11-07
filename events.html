@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Events</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <h1>Events</h1>
+  <p class="sub">Every edition of each event, season by season: German Masters, Q Tour, the IBSF championships. Categories (U-18 and U-21, Men and Women) are events of their own, linked to each other.</p>
+  <div class="controls">
+    <div class="seg" id="scope"><button data-s="pro">Professional</button><button data-s="amateur">Amateur</button></div>
+    <label>Search <input id="q" placeholder="event or winner" style="width:180px"></label>
+  </div>
+  <div id="out"></div>
+</main>
+<script src="app.js"></script>
+<script>
+(async () => {
+  const fams = await load("data/events.json");
+  const $ = id => document.getElementById(id);
+  let scope = qs("scope") === "amateur" ? "amateur" : "pro";
+  const render = () => {
+    document.querySelectorAll("#scope button").forEach(b => b.classList.toggle("on", b.dataset.s === scope));
+    const q = $("q").value.toLowerCase();
+    const rows = fams.filter(f => f.scope === scope).map(f => {
+      const seasons = f.editions.map(e => e.season).filter(Boolean);
+      const latest = f.editions[0], winners = (latest ? latest.parts : []).map(p => p.w).filter(Boolean);
+      return {f, name: f.family, slug: f.slug, n: f.editions.length, first: Math.min(...seasons), last: Math.max(...seasons),
+              latest: winners.join(", "), latestSeason: latest && latest.season,
+              all: f.editions.flatMap(e => e.parts.map(p => p.w || "")).join(" ").toLowerCase()};
+    }).filter(r => !q || r.name.toLowerCase().includes(q) || r.all.includes(q));
+    table($("out"), [
+      {k: "name", label: "Event", l: true, html: r => `<a href="event.html?e=${encodeURIComponent(r.slug)}">${esc(r.name)}</a>`},
+      {k: "n", label: "Seasons"},
+      {k: "first", label: "From", l: true, html: r => isFinite(r.first) ? esc(season(r.first)) : ""},
+      {k: "last", label: "To", l: true, html: r => isFinite(r.last) ? esc(season(r.last)) : ""},
+      {k: "latest", label: "Latest winner", l: true, html: r => r.latest ? (r.f.editions[0].parts[0].team ? esc(r.latest) :
+        r.latest.split(", ").map(playerLink).join(", ")) : '<span class="muted">–</span>'},
+    ], rows, {sort: "n", limit: 2000});
+    try {
+      const u = new URL(location.href);
+      u.searchParams.set("scope", scope);
+      history.replaceState(null, "", u);
+    } catch (e) {}
+  };
+  document.querySelectorAll("#scope button").forEach(b => b.onclick = () => { scope = b.dataset.s; render(); });
+  $("q").oninput = render;
+  render();
+})();
+</script>
+</body>
+</html>

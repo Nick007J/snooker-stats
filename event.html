@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Event</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <p class="small"><a href="events.html">Events</a></p>
+  <h1 id="title">Event</h1>
+  <p class="sub" id="sub"></p>
+  <p class="small" id="siblings"></p>
+  <div id="chart"></div>
+  <div id="out"></div>
+</main>
+<script src="app.js"></script>
+<script>
+(async () => {
+  const fams = await load("data/events.json");
+  const f = fams.find(x => x.slug === qs("e"));
+  if (!f) { document.getElementById("title").textContent = "Event not found"; return; }
+  document.title = f.family;
+  document.getElementById("title").textContent = f.family;
+  const parts = f.editions.flatMap(e => e.parts.map((p, i) => ({...p, season: e.season, first: i === 0, many: e.parts.length > 1})));
+  const wins = {};
+  parts.forEach(p => { if (p.w) wins[p.w] = (wins[p.w] || 0) + 1; });
+  const most = Object.entries(wins).sort((a, b) => b[1] - a[1])[0];
+  document.getElementById("sub").textContent = `${f.editions.length} season${f.editions.length === 1 ? "" : "s"}` +
+    (parts.length > f.editions.length ? `, ${parts.length} events` : "") + (f.scope === "pro" ? " · professional" : " · amateur") +
+    (most && most[1] > 1 ? ` · most wins: ${most[0]} (${most[1]})` : "");
+  if (f.siblings.length)
+    document.getElementById("siblings").innerHTML = "Other categories: " +
+      f.siblings.map(s => `<a href="event.html?e=${encodeURIComponent(s.slug)}">${esc(s.family)}</a>`).join(" · ");
+  const who = (p, n) => !n ? '<span class="muted">–</span>' : p.team ? esc(n) : playerLink(n);
+  const link = p => `<a href="tournament.html?t=${encodeURIComponent(p.file)}${p.quals.length ? "&quals=1" : ""}">${esc(p.name)}</a>` +
+    (p.quals.length ? ` <span class="pill">+ qualifiers</span>` : "") + (p.variant ? ' <span class="pill">variant</span>' : "");
+  // centuries per season, a small chart (from three seasons)
+  const bySeason = f.editions.filter(e => e.season).map(e => ({s: e.season, v: e.parts.reduce((a, p) => a + (p.b100 || 0), 0)})).reverse();
+  if (bySeason.length >= 3 && bySeason.some(x => x.v)) {
+    const W = Math.min(720, 40 * bySeason.length + 40), H = 120, max = Math.max(...bySeason.map(x => x.v)) || 1;
+    const bw = (W - 40) / bySeason.length;
+    document.getElementById("chart").innerHTML = `<p class="muted small" style="margin:8px 0 2px">Centuries per season</p>` +
+      `<svg class="chart" width="${W}" height="${H + 22}" role="img" aria-label="Centuries per season">` +
+      bySeason.map((x, i) => {
+        const h = Math.round((H - 14) * x.v / max), xx = 30 + i * bw;
+        return `<rect x="${xx + 2}" y="${H - h}" width="${Math.max(2, bw - 4)}" height="${h}" fill="var(--accent)"><title>${esc(season(x.s))}: ${x.v}</title></rect>` +
+          (bySeason.length <= 16 || i % 2 === 0 ? `<text x="${xx + bw / 2}" y="${H + 14}" text-anchor="middle" font-size="10" fill="var(--muted)">${esc(season(x.s).slice(2))}</text>` : "");
+      }).join("") + `<text x="0" y="12" font-size="10" fill="var(--muted)">${max}</text></svg>`;
+  }
+  table(document.getElementById("out"), [
+    {k: "season", label: "Season", l: true, html: p => p.season ? esc(season(p.season)) : ""},
+    {k: "name", label: "Event", l: true, html: link},
+    {k: "w", label: f.editions.some(e => e.parts.some(p => p.team)) ? "Winner" : "Winner", l: true, html: p => p.w ? `<b>${who(p, p.w)}</b>` : who(p, null)},
+    {k: "fs", label: "Final", html: p => esc(p.fs || "")},
+    {k: "ru", label: "Runner-up", l: true, html: p => who(p, p.ru)},
+    {k: "matches", label: "Matches"}, {k: "frames", label: "Frames"}, {k: "b100", label: "100+"},
+    {k: "hb", label: "Highest", html: p => p.hb ? `${p.hb}${p.hb_by ? ` <span class="muted small">${p.team ? esc(p.hb_by) : esc(p.hb_by)}</span>` : ""}` : ""},
+    {k: "aft", label: "Avg frame", fmt: mmss},
+  ], parts, {sort: "season", limit: 3000, rowClass: p => dlClass(p.dl)});
+})();
+</script>
+</body>
+</html>
