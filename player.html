@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Player</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <h1 id="title">Player</h1>
+  <p class="sub" id="sub"></p>
+  <h2>By season</h2>
+  <div id="seasons"></div>
+  <div class="controls" id="tabs">
+    <div class="seg"><button data-v="matches" class="on">Matches</button><button data-v="centuries">Centuries</button></div>
+  </div>
+  <section id="v-centuries" hidden>
+    <div class="controls" id="cctl" hidden><label><input type="checkbox" id="proonly"> Pro only</label>
+      <span class="small"><span class="pill am">amateur</span> amateur events</span></div>
+    <p class="sub small" id="csub"></p>
+    <div id="clist"></div>
+  </section>
+  <section id="v-matches">
+    <div class="controls"><label>Opponent <input id="q" style="width:180px"></label>
+      <label id="teamsbox" hidden><input type="checkbox" id="teams" checked> Team matches</label></div>
+    <div id="matches"></div>
+  </section>
+</main>
+<script src="app.js"></script>
+<script>
+(async () => {
+  const p = await load(`data/p/${qs("p")}.json`);
+  document.title = p.name;
+  document.getElementById("title").textContent = p.name;
+  const boards = await load("data/leaderboards.json");
+  const rows = [];
+  for (const [key, list] of Object.entries(boards)) {
+    const r = list.find(x => x.player === p.name);
+    if (!r) continue;
+    const [scope, s] = key.split("|");
+    rows.push({...r, scope, season: s === "all" ? "all time" : season(+s), order: (scope === "pro" ? "0" : "1") + (s === "all" ? "9999" : s)});
+  }
+  // a team match (m[10]: the teams and their result) counts the player's own frames; it isn't one of their matches won or lost
+  const own = p.matches.filter(m => !m[10]), team = p.matches.length - own.length;
+  const won = own.filter(m => m[5] > m[6]).length;
+  document.getElementById("sub").textContent = `${own.length} matches recorded, ${won} won` +
+    (team ? ` · ${team} team match${team > 1 ? "es" : ""} played in` : "");
+  document.getElementById("teamsbox").hidden = !team;
+  table(document.getElementById("seasons"), [
+    {k: "scope", label: "Scope", l: true}, {k: "season", label: "Season", l: true},
+    {k: "matches", label: "Matches"}, {k: "win_pct", label: "Match %"}, {k: "frame_pct", label: "Frame %"},
+    {k: "avg_break", label: "Avg break"}, {k: "b50", label: "50+"}, {k: "b100", label: "100+"}, {k: "high_break", label: "Highest"},
+    {k: "frame_time", label: "Avg frame", fmt: mmss}, {k: "ast", label: "AST"}, {k: "pot_rate", label: "Pot %"},
+    {k: "behind50_won_pct", label: "Won from 50+ behind %"},
+  ], rows, {sort: "order"});
+
+  // every century we know the frame of (a match known only by its century count isn't listed); c[8]: an amateur event
+  const cs = (p.centuries || []).map(c => ({b: c[0], date: c[1], tid: c[2], tn: c[3], round: c[4], opp: c[5], id: c[6], f: c[7], a: c[8]}));
+  const amateur = cs.filter(c => c.a).length;
+  document.getElementById("cctl").hidden = !amateur || amateur === cs.length;  // a filter only where both kinds are
+  const renderC = () => {
+    const pro = document.getElementById("proonly").checked, list = pro ? cs.filter(c => !c.a) : cs;
+    const counted = rows.filter(r => r.season === "all time" && (!pro || r.scope === "pro")).reduce((s, r) => s + (r.b100 || 0), 0);
+    document.getElementById("csub").textContent = !list.length ? "None on record." :
+      `${list.length} centuries by frame` + (counted > list.length ? ` (${counted} counted; the rest are in matches whose frames we lack)` : "") +
+      `, highest ${Math.max(...list.map(c => c.b))}` + (!pro && amateur && amateur < cs.length ? `; ${amateur} in amateur events.` : ".");
+    const el = document.getElementById("clist");
+    el.innerHTML = "";
+    if (list.length) table(el, [
+      {k: "date", label: "Date", l: true}, {k: "b", label: "Break", html: r => matchLink(r.tid, r.id, String(r.b), r.f)},
+      {k: "tn", label: "Tournament", l: true, html: r => `<a href="tournament.html?t=${encodeURIComponent(slug(r.tid))}">${esc(r.tn)}</a>`},
+      {k: "round", label: "Round", l: true}, {k: "opp", label: "Opponent", l: true, html: r => playerLink(r.opp)},
+      {k: "f", label: "Frame"},
+    ], list, {limit: 2000, rowClass: r => r.a ? "am" : ""});
+    const t = document.querySelector('#tabs [data-v="centuries"]');
+    t.textContent = `Centuries (${list.length})`;
+  };
+  document.getElementById("proonly").onchange = renderC;
+  renderC();
+  const tab = v => {
+    ["matches", "centuries"].forEach(x => document.getElementById(`v-${x}`).hidden = x !== v);
+    document.querySelectorAll("#tabs .seg button").forEach(b => b.classList.toggle("on", b.dataset.v === v));
+    history.replaceState(null, "", v === "centuries" ? "#centuries" : location.pathname + location.search);
+  };
+  document.querySelectorAll("#tabs .seg button").forEach(b => b.onclick = () => tab(b.dataset.v));
+  if (location.hash === "#centuries") tab("centuries");  // from the leaderboard's 100+
+
+  document.getElementById("matches").insertAdjacentHTML("beforebegin", dlKey());
+  const render = () => {
+    const q = document.getElementById("q").value.toLowerCase(), teams = document.getElementById("teams").checked;
+    const ms = p.matches.filter(m => (!q || m[4].toLowerCase().includes(q) || m[10] && m[10].o.toLowerCase().includes(q)) && (teams || !m[10])).map(m => ({
+      // a team match: the teams' result; the player's own frames go beside the players they faced
+      date: m[0], tid: m[1], tn: m[2], round: m[3], opp: m[4],
+      score: m[8] ? "w/o" : m[10] ? `${m[10].r[0] ?? "?"}–${m[10].r[1] ?? "?"}` : `${m[5] ?? "?"}–${m[6] ?? "?"}`,
+      res: (([a, b]) => a > b ? "W" : a < b ? "L" : "")(m[10] ? m[10].r : [m[5], m[6]]), id: m[7], dl: m[9], team: m[10], own: [m[5], m[6]]}));
+    table(document.getElementById("matches"), [
+      {k: "date", label: "Date", l: true},
+      {k: "tn", label: "Tournament", l: true, html: r => `<a href="tournament.html?t=${encodeURIComponent(slug(r.tid))}">${esc(r.tn)}</a>`},
+      {k: "round", label: "Round", l: true}, {k: "res", label: "", l: true},
+      {k: "score", label: "Score", title: "a team match: the teams' result", html: r => matchLink(r.tid, r.id, esc(r.score))},
+      {k: "opp", label: "Opponent", l: true, html: r => !r.team ? playerLink(r.opp) :
+        r.opp.split(", ").filter(Boolean).map(playerLink).join(", ") +
+        ` <span class="muted small">· ${esc(r.team.t)} v ${esc(r.team.o)}, own frames ${r.own[0] ?? "?"}–${r.own[1] ?? "?"}</span>`},
+    ], ms, {limit: 2000, rowClass: r => dlClass(r.dl)});
+  };
+  document.getElementById("q").oninput = render;
+  document.getElementById("teams").onchange = render;
+  render();
+})();
+</script>
+</body>
+</html>
