@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Snooker Stats</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <h1>Snooker stats archive</h1>
+  <p class="sub">Visit-by-visit scoring from professional and amateur events, recorded from live scoring feeds.</p>
+  <div class="grid" id="tiles"></div>
+
+  <h2>Seasons</h2>
+  <p class="sub small">Each season's tournaments (professional and amateur, from the Tournaments page). Visit data: every scoring visit and foul of the frame; shot data: every shot too (live captures, Sportradar, snookerscores sheets); the rest have the frame score only.</p>
+  <div id="seasons"></div>
+</main>
+<script src="app.js"></script>
+<script>
+(async () => {
+  const t = await load("data/totals.json");
+  const tiles = [["matches", "Matches"], ["frames", "Frames"], ["visits", "Scoring visits"], ["shots", "Shots"],
+                 ["players", "Players"], ["tournaments", "Tournaments"]];
+  document.getElementById("tiles").innerHTML = tiles.map(([k, l]) =>
+    `<div class="panel tile"><div class="v">${num(t[k])}</div><div class="k">${l}</div></div>`).join("") +
+    `<div class="panel tile"><div class="v small" style="font-size:16px">${t.first} → ${t.last}</div><div class="k">Date range (dated matches)</div></div>`;
+
+  const [ins, ts] = await Promise.all([load("data/insights.json"), load("data/tournaments.json")]);
+  const by = new Map();  // season -> its row
+  const row = s => by.get(s) || by.set(s, {s, season: season(s), pro: 0, am: 0, matches: 0, frames: 0, b100: 0, high: null,
+                                               cf: 0, vf: 0, sf: 0}).get(s);
+  for (const t of ts) {
+    if (t.season == null || t.upcoming) continue;
+    const r = row(t.season);
+    r[t.pro || t.qs ? "pro" : "am"]++;
+    r.matches += t.matches || 0; r.frames += t.frames || 0; r.b100 += t.b100 || 0;
+    if (t.high_break && !t.variant && (r.high == null || t.high_break > r.high)) r.high = t.high_break;
+  }
+  for (const seasons of Object.values(ins.coverage))  // the frames with visits and with shots, all sources
+    for (const [label, c] of Object.entries(seasons)) {
+      const s = +label.slice(0, 4) + 1;
+      if (!by.has(s)) continue;
+      const r = by.get(s);
+      r.cf += c.frames || 0; r.vf += c.visit_frames || 0; r.sf += c.shot_frames || 0;
+    }
+  const rows = [...by.values()].map(r => ({...r, vis: r.cf ? Math.round(100 * r.vf / r.cf) : null,
+                                           sh: r.cf ? Math.round(100 * r.sf / r.cf) : null}));
+  table(document.getElementById("seasons"), [
+    {k: "s", label: "Season", l: true, html: r => `<a href="tournaments.html?ssn=${r.s}">${esc(r.season)}</a>`},
+    {k: "pro", label: "Pro events"}, {k: "am", label: "Amateur events"},
+    {k: "matches", label: "Matches"}, {k: "frames", label: "Frames"}, {k: "b100", label: "100+"}, {k: "high", label: "Highest"},
+    {k: "vis", label: "Visit data %"}, {k: "sh", label: "Shot data %"},
+  ], rows, {sort: "s"});
+})();
+</script>
+</body>
+</html>

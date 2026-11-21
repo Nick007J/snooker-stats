@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Rankings</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <h1>Rankings</h1>
+  <p class="sub" id="sub">WST's and WPBSA's lists worked out from our matches; CBSA's as published.</p>
+  <div class="seg wrap" id="orgs"></div>
+  <div class="seg wrap" id="lists"></div>
+  <p class="sub" id="note"></p>
+  <div class="seg wrap" id="cuts" hidden></div>
+  <div id="out"></div>
+</main>
+<script src="app.js"></script>
+<script>
+(async () => {
+  let d, players = {};
+  try { d = await load("data/rankings.json"); } catch (e) { d = {orgs: []}; }
+  try { players = await load("data/players.json"); } catch (e) {}
+  const NOTES = {
+    "wst/world": "WST's two-year list, worked out from our matches: the prize money of each ranking event for the round " +
+                 "reached (WST's prize lists), the money of two years ago going at each re-ranking date. A first match " +
+                 "lost counts nothing (except at the World Grand Prix, Players and Tour Championships); a win then a defeat " +
+                 "in a round paying nothing (a pre-qualifier's winner) half the lowest prize; a withdrawal after a win keeps " +
+                 "the round's money; Championship League groups by their rules (points, frame difference, head to head, " +
+                 "highest break); a new tour card starts from nothing (money struck through). Tour players only. Where " +
+                 "WST's own figure differs, it is shown under ours.",
+    "wst/year": "This season's prize money in the ranking events, as the two-year list counts it (the One Year List seeds " +
+                "the World Grand Prix, Players and Tour Championships).",
+    "wst/seedings": "The money each player keeps at the re-ranking dates to come, when the events of two years ago go " +
+                    "(WST's re-ranking points list), as if nobody won anything more: the events still to be played add to it. " +
+                    "Pick a date: its position seeds the events named.",
+    "wst/qschool": "One point for every frame won over the Q School events, four for a bye into round 2. Level players: frames " +
+                   "won in event 1, then 2, fewest frames lost, ... (WST's countback; '=' where still level). The quarter-final " +
+                   "winners won tour cards and are listed below the order of merit.",
+    "wpbsa/qtour": "Ranking points per round reached: winner 10,000, runner-up 7,000, semi-final 4,900, quarter-final 3,430, " +
+                   "last 16 2,400, last 32 1,680, last 64 1,175, last 128 825; nothing for a first match lost. Worked out " +
+                   "from our matches. The top player at the season's end earns a WST tour card; the next 16 go to the play-offs.",
+    "cbsa/tour": "The CBSA national snooker ranking: the China Tour's events. The top two at the season's end get WST tour cards. " +
+                 "The total is CBSA's: the last four events, each worth 90% of the one after it (the weight under each event); " +
+                 "points struck through are listed but not counted (wildcard entries get none, by the rules).",
+    "cbsa/junior": "The CBSA junior series ranking (the 青少年系列赛). The total is CBSA's: the last four events, each worth 90% of the " +
+                   "one after it; older events' points, struck through, no longer count.",
+  };
+  const out = document.getElementById("out");
+  if (!d.orgs.length) { out.innerHTML = '<p class="muted">No rankings yet.</p>'; return; }
+  if (d.checked) document.getElementById("sub").insertAdjacentHTML("beforeend", ` Updated ${esc(d.checked)}.`);
+  let org = d.orgs.find(o => o.key === qs("org")) || d.orgs[0];
+  let list = org.lists.find(l => l.key === qs("list")) || org.lists[0];
+  let cutIx = Math.max(0, Number(qs("cut")) || 0);
+  const name = r => players[r.name] ? playerLink(r.name) : esc(r.name);
+  const tlink = e => e.t ? `<a href="tournament.html?t=${encodeURIComponent(e.t)}" onclick="event.stopPropagation()">${esc(e.label)}</a>` : esc(e.label);
+  const rankCell = r => r.rank == null ? "" : `${r.equal ? "=" : ""}${r.rank}`;
+  const eventCols = (events, rows, extra = () => "") => events.map((e, i) => ({k: `e${i}`, title: e.title || e.cn || e.label,
+    label: tlink(e) + extra(e),
+    html: r => r.points[i] == null ? "" : (r.counted ? r.counted[i] : true) ? num(r.points[i])
+      : `<span class="off" title="before their tour card: doesn't count">${num(r.points[i])}</span>`}));
+  const withEvents = rows => rows.map(r => ({...r, ...Object.fromEntries((r.points || []).map((p, i) => [`e${i}`, p]))}));
+
+  function money() {
+    const events = list.events.slice().reverse();  // the latest first
+    const rev = r => ({...r, points: r.points.slice().reverse(), counted: r.counted && r.counted.slice().reverse()});
+    const rows = withEvents(list.rows.map(rev));
+    const cols = [
+      {k: "rank", label: "#"},
+      {k: "name", label: "Player", l: true, html: r => name(r)},
+      {k: "total", label: "Total", html: r => `<b>${num(r.total)}</b>` +
+        (r.wst != null ? `<br><span class="muted small" title="WST's own figure">WST ${num(r.wst)}</span>` : "")},
+      ...(list.key === "world" ? [{k: "year", label: "This season"}] : []),
+      ...eventCols(events, rows, e => e.removed ? `<br><span class="muted small">off ${esc(e.removed)}</span>` : ""),
+    ];
+    table(out, cols, rows, {sort: "rank", asc: true});
+  }
+
+  function seedings() {
+    const cuts = list.cutoffs || [];
+    const box = document.getElementById("cuts");
+    box.hidden = !cuts.length;
+    if (!cuts.length) { out.innerHTML = '<p class="muted">No re-ranking dates left this season.</p>'; return; }
+    cutIx = Math.min(cutIx, cuts.length - 1);
+    box.innerHTML = cuts.map((c, i) => `<button data-c="${i}" class="${i === cutIx ? "on" : ""}">${esc(c.date)}</button>`).join("");
+    box.querySelectorAll("button").forEach(b => b.onclick = () => { cutIx = Number(b.dataset.c); render(); });
+    const c = cuts[cutIx];
+    document.getElementById("note").insertAdjacentHTML("beforeend",
+      `<br><b>${esc(c.date)}</b>: ` + (c.removes.length ? `${esc(c.removes.join(", "))} money goes` : "no money goes") +
+      (c.adds ? `, ${esc(c.adds)} comes in` : "") + (c.seeds.length ? `; seeds the ${esc(c.seeds.join(", "))}` : "") + ".");
+    const rows = list.rows.map(r => ({...r, held: r.held[cutIx], at: r.held_rank[cutIx], move: r.rank - r.held_rank[cutIx],
+                                      drop: r.total - r.held[cutIx]}));
+    const cols = [
+      {k: "at", label: "#"},
+      {k: "name", label: "Player", l: true, html: r => name(r)},
+      {k: "held", label: "Money kept"},
+      {k: "drop", label: "Money going", html: r => r.drop ? num(r.drop) : ""},
+      {k: "rank", label: "Now"},
+      {k: "move", label: "±", html: r => r.move > 0 ? `<span class="up">▲${r.move}</span>` : r.move < 0 ? `<span class="down">▼${-r.move}</span>` : ""},
+      {k: "total", label: "Total now"},
+    ];
+    table(out, cols, rows, {sort: "at", asc: true});
+  }
+
+  function oom() {
+    const rows = withEvents(list.rows);
+    const cols = [
+      {k: "rank", label: "#", html: r => r.card ? `<span class="muted small">card</span>` : rankCell(r)},
+      {k: "name", label: "Player", l: true, html: r => name(r) + (r.card ? ` <span class="muted small">(won a card in event ${r.card})</span>` : "")},
+      ...eventCols(list.events, rows),
+      {k: "total", label: "Points", html: r => `<b>${num(r.total)}</b>`},
+      {k: "lostsum", label: "Frames lost"},
+    ];
+    table(out, cols, rows.map(r => ({...r, lostsum: r.lost.reduce((a, b) => a + b, 0), rank: r.card ? 9999 : r.rank})), {sort: "rank", asc: true});
+  }
+
+  function points() {
+    const rows = withEvents(list.rows);
+    const cols = [
+      {k: "rank", label: "#", html: r => rankCell(r)},
+      {k: "name", label: "Player", l: true, html: r => name(r)},
+      ...eventCols(list.events, rows),
+      {k: "total", label: "Total", html: r => `<b>${num(r.total)}</b>`},
+    ];
+    table(out, cols, rows, {sort: "rank", asc: true});
+  }
+
+  function cbsa() {
+    const rows = withEvents(list.rows);
+    const cols = [
+      {k: "rank", label: "#"},
+      {k: "name", label: "Player", l: true, html: r => name(r) + (r.cn && r.cn !== r.name ? ` <span class="muted small">${esc(r.cn)}</span>` : "")},
+      {k: "region", label: list.key === "junior" ? "From" : "Association", l: true},
+      ...(list.key === "junior" ? [{k: "born", label: "Born", l: true}] : []),
+      ...list.events.map((e, i) => ({k: `e${i}`, title: e.cn,
+        label: tlink(e) + `<br><span class="muted small">${e.weight ? "×" + e.weight : "not counted"}</span>`,
+        html: r => r.points[i] == null ? "" : (r.counted ? r.counted[i] : true) ? num(r.points[i])
+          : `<span class="off" title="${e.weight ? "listed, not counted in CBSA's total" : "too old: only the last four events count"}">${num(r.points[i])}</span>`})),
+      {k: "total", label: "Total"},
+    ];
+    table(out, cols, rows, {sort: "rank", asc: true});
+  }
+
+  const render = () => {
+    document.getElementById("orgs").innerHTML = d.orgs.map(o => `<button data-o="${o.key}" class="${o === org ? "on" : ""}">${esc(o.label)}</button>`).join("");
+    document.getElementById("lists").innerHTML = org.lists.map(l => `<button data-l="${l.key}" class="${l === list ? "on" : ""}">${esc(l.label)}</button>`).join("");
+    document.getElementById("note").innerHTML = esc(NOTES[`${org.key}/${list.key}`] || "") +
+      (list.as_of_label ? (org.key === "cbsa" ? ` After ${esc(list.as_of_label)}.` : ` ${esc(list.as_of_label)}`) : "") +
+      (list.url ? ` <a href="${esc(list.url)}" target="_blank" rel="noopener">${org.key === "cbsa" ? "Source" : "Official"}</a>.` : "");
+    document.getElementById("cuts").hidden = true;
+    ({money, seedings, oom, points}[list.kind] || cbsa)();
+    document.querySelectorAll("#orgs button").forEach(b => b.onclick = () => {
+      org = d.orgs.find(o => o.key === b.dataset.o); list = org.lists[0]; render(); });
+    document.querySelectorAll("#lists button").forEach(b => b.onclick = () => {
+      list = org.lists.find(l => l.key === b.dataset.l); render(); });
+    try {
+      const u = new URL(location.href);
+      u.searchParams.set("org", org.key); u.searchParams.set("list", list.key);
+      if (list.kind === "seedings") u.searchParams.set("cut", cutIx); else u.searchParams.delete("cut");
+      history.replaceState(null, "", u);
+    } catch (e) {}
+  };
+  render();
+})();
+</script>
+</body>
+</html>

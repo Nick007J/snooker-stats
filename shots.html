@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Shot by shot</title>
+<link rel="stylesheet" href="style.css">
+<style>
+#table { position: sticky; bottom: 0; left: 0; z-index: 2; margin-top: 12px; box-sizing: border-box;
+         max-width: min(100%, calc(100vw - 32px));  /* the site's menu can make the page wider than a phone */
+         box-shadow: 0 -4px 16px rgba(0, 0, 0, .18); }
+#table svg { width: 100%; max-width: 100%; height: auto; display: block; max-height: 42vh; }
+#table .bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+#table button { font: inherit; padding: 2px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--text); cursor: pointer; }
+.shots.maps tbody tr { cursor: pointer; }
+.shots tbody tr.on { background: var(--accent-soft); outline: 2px solid var(--accent); outline-offset: -2px; }
+</style>
+</head>
+<body>
+<main>
+  <p class="sub" id="crumb"></p>
+  <h1 id="title">Shot by shot</h1>
+  <p class="sub" id="sub"></p>
+  <div class="grid" id="tiles"></div>
+  <h2>Shots</h2>
+  <p class="muted small">Time is how long the shot took, from the previous shot. Grey dashed balls were inferred: the
+    live feed lost them at the end of the frame. Reds potted in one shot are one row.</p>
+  <div id="shots"></div>
+  <div id="table" class="panel" hidden></div>
+</main>
+<script src="app.js"></script>
+<script>
+(async () => {
+  const t = await load(`data/t/${qs("t")}.json`);
+  const m = t.matches.find(x => String(x.id) === qs("m"));
+  const fi = Number(qs("f"));
+  const f = m && m.frames[fi];
+  if (!f) { document.getElementById("title").textContent = "Frame not found"; return; }
+  const [a, b] = m.p;
+  const link = i => `shots.html?t=${encodeURIComponent(qs("t"))}&m=${m.id}&f=${i}`;
+  const live = m.frames.map((x, i) => [x, i]).filter(([x]) => !x.rr && x.sh && isLive(x));
+  const at = live.findIndex(([, i]) => i === fi);
+  const nav = [at > 0 && `<a href="${link(live[at - 1][1])}">← frame ${live[at - 1][0].n}</a>`,
+               at >= 0 && at < live.length - 1 && `<a href="${link(live[at + 1][1])}">frame ${live[at + 1][0].n} →</a>`];
+  document.title = `${a} v ${b}, frame ${f.n}`;
+  document.getElementById("crumb").innerHTML = `<a href="tournament.html?t=${encodeURIComponent(qs("t"))}">${esc(t.name)}</a> · ` +
+    matchLink(qs("t"), m.id, `${esc(a)} ${m.f[0] ?? "?"}–${m.f[1] ?? "?"} ${esc(b)}`);
+  document.getElementById("title").innerHTML = `Frame ${f.n}${f.rr ? " (re-racked)" : ""}: ${playerLink(a)} ${f.s[0] ?? "?"}–${f.s[1] ?? "?"} ${playerLink(b)}`;
+  document.getElementById("sub").innerHTML = [m.date, f.d && `frame time ${mmss(f.d)}`, f.note && esc(f.note),
+    ...nav].filter(Boolean).join(" · ");
+
+  // Walk the frame: running score and break after each shot.
+  const score = [0, 0];
+  let brk = 0, at_table = null;
+  const rows = [];
+  const same = sameShotReds(f);
+  f.sh.forEach((s, i) => {
+    const [pl, kind, colour, pts, clock, time, inferred] = s;
+    if (kind === "frame_start") { at_table = pl; return; }
+    if (pl !== at_table) { brk = 0; at_table = pl; }
+    let what;
+    if (kind === "pot") {
+      score[pl - 1] += pts || 0;
+      brk += pts || 0;
+      if (same.has(i)) {  // a further red of the shot before: one row, its time and clock running on
+        const r = rows[rows.length - 1];
+        r.reds = (r.reds || 1) + 1;
+        Object.assign(r, {what: `${ball(s).repeat(r.reds)} Red ×${r.reds}`, clock, time: r.time + time, score: `${score[0]}–${score[1]}`, brk});
+        return;
+      }
+      what = `${ball(s)} ${esc(colour || `${pts} (ball unknown)`)}`;
+    } else if (kind === "foul") {
+      score[2 - pl] += pts || 0;
+      brk = 0;
+      what = `<span style="color:var(--foul)">Foul, ${pts} to ${esc(m.p[2 - pl])}</span>`;
+    } else {
+      brk = 0;
+      what = `<span class="muted">No pot (miss or safety)</span>`;
+    }
+    if (kind !== "pot") at_table = 3 - pl;
+    rows.push({i, pl, kind, name: m.p[pl - 1], what: what + (inferred ? ' <span class="muted small">inferred</span>' : ""),
+               clock, time, score: `${score[0]}–${score[1]}`, brk: kind === "pot" ? brk : null});
+  });
+  if (f.rb) {  // the pot or foul that settled it
+    const last = rows.filter(r => r.kind !== "shot").pop();
+    if (last) last.what += ` <span class="pill" title="${RESPOT_HELP}">respotted black${f.rb === 2 ? " (likely)" : ""}</span>`;
+  }
+
+  const tiles = [];
+  [1, 2].forEach(p => {
+    const mine = rows.filter(r => r.pl === p), timed = mine.filter(r => r.time);
+    const pots = f.sh.filter(s => s[0] === p && s[1] === "pot").length;
+    const avg = timed.length ? (timed.reduce((x, r) => x + r.time, 0) / timed.length).toFixed(1) + "s" : "–";
+    const long = timed.length ? Math.max(...timed.map(r => r.time)).toFixed(0) + "s" : "–";
+    tiles.push([`${m.p[p - 1]}`, `${mine.length} shots, ${pots} pots`, `avg ${avg} · longest ${long}`]);
+  });
+  document.getElementById("tiles").innerHTML = tiles.map(([k, v, x]) =>
+    `<div class="panel tile"><div class="k">${esc(k)}</div><div class="v" style="font-size:20px">${v}</div><div class="k">${x}</div></div>`).join("");
+
+  const longest = Math.max(1, ...rows.map(r => r.time || 0));
+  document.getElementById("shots").innerHTML = `<div class="scroll shots"><table><thead><tr>
+    <th>#</th><th>Clock</th><th class="l">Player</th><th class="l">Shot</th><th>Time</th><th class="l bar"></th><th>Score</th><th>Break</th>
+    </tr></thead><tbody>${rows.map((r, i) => `<tr><td>${i + 1}</td><td>${esc(r.clock || "")}</td>
+    <td class="l" style="color:var(--p${r.pl})">${esc(r.name)}</td><td class="l">${r.what}</td>
+    <td>${r.time != null ? r.time.toFixed(1) + "s" : ""}</td>
+    <td class="l bar">${r.time ? `<span style="width:${(100 * r.time / longest).toFixed(1)}%;background:var(--p${r.pl})"></span>` : ""}</td>
+    <td>${r.score}</td><td>${r.brk ?? ""}</td></tr>`).join("")}</tbody></table></div>`;
+
+  // The balls on the table before each shot, from the match's video (ball_maps.py): a click on a shot shows them
+  if (!m.bm) return;
+  const maps = ((await load(`data/b/${m.id}.json`)).f || [])[fi] || {};
+  if (!Object.keys(maps).length) return;
+  const BC = {r: BALL.Red, y: BALL.Yellow, g: BALL.Green, n: BALL.Brown, b: BALL.Blue, p: BALL.Pink, k: BALL.Black, w: "#f4f4f0"};
+  const NAME = {r: "red", y: "yellow", g: "green", n: "brown", b: "blue", p: "pink", k: "black", w: "cue ball"};
+  const wrap = document.querySelector("#shots .shots"), trs = [...document.querySelectorAll("#shots tbody tr")];
+  wrap.classList.add("maps");
+  document.querySelector("main p.muted.small").insertAdjacentHTML("beforeend",
+    " Click a shot to see the balls on the table before it, from the match video (← → for the shot before or after).");
+  const panel = document.getElementById("table");
+  let cur = -1;
+  // Every ball is drawn where the video puts it at best; the debug view dashes those not seen before this shot
+  let debug = false;
+  try { debug = localStorage.getItem("bmDebug") === "1"; } catch (e) {}
+  const W = 3569, H = 1778, P = 90;
+  const cloth = `<rect x="${-P}" y="${-P}" width="${W + 2 * P}" height="${H + 2 * P}" rx="45" fill="#4a2c18"/>
+    <rect width="${W}" height="${H}" fill="#1e7a3c"/><line x1="737" x2="737" y1="0" y2="${H}" stroke="#a7d3b0" stroke-width="5"/>
+    <path d="M737 597 A292 292 0 0 0 737 1181" fill="none" stroke="#a7d3b0" stroke-width="5"/>` +
+    [[0, 0], [0, H], [W / 2, -15], [W / 2, H + 15], [W, 0], [W, H]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="62" fill="#0b0b0b"/>`).join("") +
+    [[737, 1181], [737, 889], [737, 597], [1784.5, 889], [2676.75, 889], [3245, 889]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="8" fill="#a7d3b0"/>`).join("");
+  function show(k) {
+    k = Math.max(0, Math.min(rows.length - 1, k));
+    if (cur >= 0) trs[cur].classList.remove("on");
+    cur = k;
+    trs[k].classList.add("on");
+    trs[k].scrollIntoView({block: "center"});  // above the panel, which stays at the foot of the window
+    const r = rows[k], balls = maps[String(r.i)];
+    const ballsSvg = (balls || []).map(([c, x, y, seen]) => seen || !debug
+      ? `<circle cx="${x}" cy="${y}" r="26.25" fill="${BC[c]}" stroke="${c === "k" ? "#777" : "#000"}" stroke-width="4"><title>${NAME[c]}</title></circle>`
+      : `<circle cx="${x}" cy="${y}" r="24" fill="none" stroke="${BC[c]}" stroke-width="8" stroke-dasharray="14 9"><title>${NAME[c]}: not seen, where it was last seen</title></circle>`).join("");
+    panel.hidden = false;
+    panel.innerHTML = `<div class="bar"><button id="bm-prev" title="the shot before (←)">◀</button><button id="bm-next" title="the shot after (→)">▶</button>
+      <span><b>Before shot ${k + 1}</b>: <span style="color:var(--p${r.pl})">${esc(r.name)}</span> · ${r.what} · ${r.score}</span>
+      <span class="muted small">${balls ? "from the video" + (debug ? "; dashed: not seen, where last seen" : "") : "no picture of the table before this shot"}</span>
+      <label class="small" title="dash the balls not seen in the video before this shot (drawn where last seen)" style="margin-left:auto"><input type="checkbox" id="bm-debug"${debug ? " checked" : ""}> debug view</label>
+      <button id="bm-close" title="close (Esc)">✕</button></div>
+      <svg viewBox="${-P} ${-P} ${W + 2 * P} ${H + 2 * P}" role="img" aria-label="the table before shot ${k + 1}">${cloth}${ballsSvg}</svg>`;
+    document.getElementById("bm-prev").onclick = () => show(cur - 1);
+    document.getElementById("bm-next").onclick = () => show(cur + 1);
+    document.getElementById("bm-close").onclick = close;
+    document.getElementById("bm-debug").onchange = e => {
+      debug = e.target.checked;
+      try { localStorage.setItem("bmDebug", debug ? "1" : "0"); } catch (err) {}
+      show(cur);
+    };
+  }
+  function close() {
+    panel.hidden = true;
+    if (cur >= 0) trs[cur].classList.remove("on");
+    cur = -1;
+  }
+  trs.forEach((tr, k) => tr.addEventListener("click", e => { if (!e.target.closest("a")) show(k); }));
+  if (qs("s")) show(Number(qs("s")) - 1);  // a link to a shot's table: &s=<shot number>
+  addEventListener("keydown", e => {
+    if (cur < 0 || e.altKey || e.ctrlKey || e.metaKey) return;
+    if (e.key === "ArrowRight" || e.key === "ArrowLeft") { e.preventDefault(); show(cur + (e.key === "ArrowRight" ? 1 : -1)); }
+    if (e.key === "Escape") close();
+  });
+})();
+</script>
+</body>
+</html>
